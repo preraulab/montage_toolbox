@@ -14,3 +14,7 @@ Thumbs.db
 #file copies 
 ._*
 *.asv
+
+# Sphinx build output
+docs/_build/
+docs/_autosummary/
