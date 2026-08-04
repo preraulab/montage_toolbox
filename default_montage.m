@@ -17,9 +17,9 @@ function [eloc, source] = default_montage(n_chans)
 %   Notes:
 %       Montages come from the compiled library (channel_locs/montage_library.mat)
 %       via cap_montage, and are Brain Products actiCAP layouts: named electrodes
-%       (Cz, F3) with correct geometry. The legacy eloc*.mat files are the
-%       fallback and are known to be distorted -- see the README -- so falling
-%       back warns rather than passing silently.
+%       (Cz, F3) with correct geometry. The library ships with the repository, so
+%       a missing one is a broken install rather than an expected state, and
+%       cap_montage's noLibrary error is allowed to propagate.
 %
 %       Any cap in the library can be used instead by name:
 %       channelbrowse(mdata, 'eloc', cap_montage('BC-SL-64')).
@@ -73,10 +73,6 @@ switch n_chans
         [eloc, source] = whole_cap('AC-64', 'actiCAP 64');
 end
 
-if isempty(eloc)
-    [eloc, source] = legacy_fallback(n_chans);
-end
-
 end
 
 %************************************************************
@@ -90,52 +86,10 @@ function [eloc, source] = whole_cap(cap, name)
 %       name : char - human-readable montage name -- required
 %
 %   Outputs:
-%       eloc   : 1xC struct - channel locations, or [] if the library is absent
-%       source : char - montage name, or '' if the library is absent
-
-eloc = [];
-source = '';
-try
-    eloc = cap_montage(cap);
-    source = name;
-catch ME
-    % A missing library is the expected case on a fresh clone and the caller
-    % falls back; anything else is a real fault and should not be swallowed.
-    if ~strcmp(ME.identifier, 'cap_montage:noLibrary')
-        rethrow(ME);
-    end
-end
-
-end
-
-%************************************************************
-%                LEGACY .MAT FALLBACK
-%************************************************************
-function [eloc, source] = legacy_fallback(n_chans)
-%LEGACY_FALLBACK  Load a bundled eloc*.mat when no vendor file is available
-%
-%   Inputs:
-%       n_chans : integer - number of channels in the data -- required
-%
-%   Outputs:
 %       eloc   : 1xC struct - channel locations
 %       source : char - montage name
 
-switch n_chans
-    case 6
-        file = 'eloc6';
-    otherwise
-        file = 'eloc64';
-end
-
-warning('default_montage:legacyMontage', ...
-    ['Montage library not found; falling back to the bundled %s.mat, whose ' ...
-     'geometry is known to be distorted and whose channels are numbered rather ' ...
-     'than named. Build the library with build_montage_library, or pass an ' ...
-     'explicit ''eloc''.'], file);
-
-montage = load(file, 'eloc');
-eloc = montage.eloc;
-source = sprintf('%s.mat (legacy)', file);
+eloc = cap_montage(cap);
+source = name;
 
 end

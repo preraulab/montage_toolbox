@@ -19,11 +19,3 @@ Root
 .. mat:autofunction:: spectcube
 .. mat:autofunction:: xyz_to_eloc
 
-channel_locs
-------------
-
-.. mat:module:: channel_locs
-
-.. mat:autofunction:: generate_2d_10_20
-.. mat:autofunction:: generate_2d_eloc64
-

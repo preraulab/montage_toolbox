@@ -674,12 +674,12 @@ end
 % Genuine EGI HydroCel nets sit 12-14% off the electrode set's best-fit sphere
 % centre and are perfectly good -- their origin is the fiducial-defined head
 % centre, and the net's coverage extends asymmetrically down over the face,
-% which drags a sphere fit. The broken eloc64.mat sits at 50%. 25% separates
-% them with room to spare.
+% which drags a sphere fit. The old picture-digitized eloc64 starburst (since
+% removed from the repo) sat at 50%. 25% separates them with room to spare.
 %
 % Deliberately NOT checked: sphericity. A real head is not a sphere, so the
-% residual cannot discriminate -- a legitimate EGI 256 net scores 8.1% and the
-% junk eloc64.mat scores 8.5%. A check that cannot tell good from bad is worse
+% residual cannot discriminate -- a legitimate EGI 256 net scores 8.1% and that
+% same junk starburst scored 8.5%. A check that cannot tell good from bad is worse
 % than no check, because people learn to ignore it.
 if centre_offset > 0.25
     warning('read_montage:offCentre', ...

@@ -73,7 +73,7 @@ function [hax, ex, ey] = plot_topo(values, eloc, varargin)
 %       interpolation but still drawn as electrodes.
 %
 %   Example:
-%       load eloc64;
+%       eloc = cap_montage('AC-64');
 %       [~, ex, ey] = plot_topo(randn(64,1), eloc, 'style', 'map');
 %
 %   See also: channelbrowse, channelbrowse_hist, channelcheck
