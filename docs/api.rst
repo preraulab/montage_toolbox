@@ -10,9 +10,14 @@ Root
 
 .. mat:autofunction:: channelbrowse
 .. mat:autofunction:: channelbrowse_hist
+.. mat:autofunction:: build_montage_library
+.. mat:autofunction:: cap_montage
 .. mat:autofunction:: channelcheck
+.. mat:autofunction:: default_montage
+.. mat:autofunction:: plot_topo
+.. mat:autofunction:: read_montage
 .. mat:autofunction:: spectcube
-.. mat:autofunction:: topoplotFast
+.. mat:autofunction:: xyz_to_eloc
 
 channel_locs
 ------------
@@ -21,18 +26,4 @@ channel_locs
 
 .. mat:autofunction:: generate_2d_10_20
 .. mat:autofunction:: generate_2d_eloc64
-
-topoplot
---------
-
-.. mat:module:: topoplot
-
-.. mat:autofunction:: convertlocs
-.. mat:autofunction:: eeg_chantype
-.. mat:autofunction:: error_bc
-.. mat:autofunction:: icadefs
-.. mat:autofunction:: intersect_bc
-.. mat:autofunction:: readlocs
-.. mat:autofunction:: setdiff_bc
-.. mat:autofunction:: union_bc
 

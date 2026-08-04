@@ -1,0 +1,15 @@
+# Vendor electrode-coordinate files are NOT committed.
+#
+# These come from the cap manufacturers. None of them grants redistribution --
+# they are simply downloadable (EGI), or gated behind a customer login
+# (Brain Products). This repository is public and BSD-3 licensed, so vendor
+# files are kept local and out of git.
+#
+# See README.md in this directory for where to obtain each set.
+
+*.bvef
+*.sfp
+*.elc
+*.xls
+*.xlsx
+*.zip
