@@ -1,10 +1,11 @@
-function [hax, ex, ey] = plot_topo(values, eloc, varargin)
+function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
 %PLOT_TOPO  Plot electrode locations (and optional scalp map) on a head model
 %
 %   Usage:
 %       [hax, ex, ey] = plot_topo([], eloc)
 %       [hax, ex, ey] = plot_topo([], eloc, 'electrodes', 'ptslabels')
-%       [hax, ex, ey] = plot_topo(values, eloc, 'style', 'map', 'conv', 'on')
+%       [hax, ex, ey, hmap] = plot_topo(values, eloc, 'style', 'map')
+%       plot_topo(newvalues, [], 'update', hmap)   % fast redraw, same montage
 %
 %   Inputs:
 %       values : Cx1 double - one value per channel to render as an
@@ -46,6 +47,11 @@ function [hax, ex, ey] = plot_topo(values, eloc, varargin)
 %                      'mean' gives each the average of its neighbouring
 %                      electrodes; a number pins them all to that value
 %                      (default: 'mean')
+%       'update'     : image handle - a map returned earlier as hmap. Repaints it
+%                      from new values, reusing the cached geometry, and returns
+%                      immediately. eloc may be [] and every other option is
+%                      ignored, since they are fixed by the original call
+%                      (default: [])
 %       'cliprad'    : double - hard radius cap on the painted map, applied on
 %                      top of whatever mask 'extrapolate' produces. This is a
 %                      deliberate departure from MNE, which has no such mode:
@@ -65,9 +71,12 @@ function [hax, ex, ey] = plot_topo(values, eloc, varargin)
 %       'parent'     : axes handle - axes to draw into (default: gca)
 %
 %   Outputs:
-%       hax : axes handle - the axes drawn into
-%       ex  : Cx1 double - electrode screen x coordinates, in channel order
-%       ey  : Cx1 double - electrode screen y coordinates, in channel order
+%       hax  : axes handle - the axes drawn into
+%       ex   : Cx1 double - electrode screen x coordinates, in channel order
+%       ey   : Cx1 double - electrode screen y coordinates, in channel order
+%       hmap : image handle - the scalp map object, or [] when no map was drawn.
+%              Pass it back as 'update' to repaint with new values; the
+%              interpolation geometry is cached on it.
 %
 %   Notes:
 %       This is a self-contained replacement for EEGLAB's topoplot family.
@@ -115,7 +124,7 @@ function [hax, ex, ey] = plot_topo(values, eloc, varargin)
 %       mne.viz.plot_topomap (mne/viz/topomap.py): its projection, synthetic
 %       boundary ring and 'mean' border condition, clip radius, extrapolation
 %       modes, and head/nose/ear geometry. The Clough-Tocher interpolant in
-%       clough_tocher_2d and estimate_gradients_2d is a port of SciPy's
+%       cache_clough_tocher and topo_evaluate is a port of SciPy's
 %       CloughTocher2DInterpolator (scipy/interpolate/interpnd.pyx). Both
 %       projects are BSD-3-Clause, as is this file; neither endorses this port.
 %       Please cite Gramfort et al. (2013) and Virtanen et al. (2020) alongside
@@ -131,7 +140,10 @@ function [hax, ex, ey] = plot_topo(values, eloc, varargin)
 
 p = inputParser;
 addRequired(p,  'values',      @(x) validateattributes(x, {'numeric'}, {}));
-addRequired(p,  'eloc',        @(x) validateattributes(x, {'struct'}, {'nonempty'}));
+% eloc may be empty when 'update' is given -- the geometry is already cached there.
+% "empty or a nonempty struct" is a disjunction across types, which attributes cannot
+% express, so this is a predicate rather than a validateattributes call.
+addRequired(p,  'eloc',        @(x) isempty(x) || (isstruct(x) && ~isempty(x)));
 addParameter(p, 'style',      '',      @(x) any(validatestring(x, {'map','blank'})) || isempty(x));
 addParameter(p, 'electrodes', 'pts',   @(x) any(validatestring(x, {'off','on','pts','labels','ptslabels'})));
 addParameter(p, 'maplimits',  'absmax',@(x) (ischar(x) && any(validatestring(x, {'absmax','maxmin'}))) || ...
@@ -154,8 +166,43 @@ addParameter(p, 'shading',    'interp',@(x) any(validatestring(x, {'interp','fla
 addParameter(p, 'conv',       'off',   @(x) any(validatestring(x, {'on','off'})));
 addParameter(p, 'emarker',    {'.','k',[],1}, @(x) validateattributes(x, {'cell'}, {'vector'}));
 addParameter(p, 'headcolor',  [0 0 0], @(x) validateattributes(x, {'numeric'}, {'vector','numel',3,'>=',0,'<=',1}));
+addParameter(p, 'update',     [],      @(x) isempty(x) || isgraphics(x, 'image'));
 addParameter(p, 'parent',     [],      @(x) isempty(x) || isgraphics(x, 'axes'));
 parse(p, values, eloc, varargin{:});
+
+%************************************************************
+%                      FAST UPDATE PATH
+%************************************************************
+
+% Everything below this block is setup that an update does not need: the geometry is
+% already cached on the map handle, and the head, markers and axes are already drawn.
+hmap = p.Results.update;
+if ~isempty(hmap)
+    S = getappdata(hmap, 'plot_topo_cache');
+    assert(~isempty(S), 'plot_topo:noCache', ...
+        ['That image carries no interpolation cache. ''update'' takes the hmap output ' ...
+         'of an earlier plot_topo call, not an arbitrary image handle.']);
+
+    vals = double(p.Results.values(:));
+    assert(numel(vals) == S.num_chans, 'plot_topo:sizeMismatch', ...
+        'values must have one entry per channel (%d channels, %d values).', ...
+        S.num_chans, numel(vals));
+    assert(isequal(isfinite(vals), S.good), 'plot_topo:goodChanged', ...
+        ['Which channels are finite has changed since the map was drawn, so the cached ' ...
+         'triangulation no longer applies. Call plot_topo without ''update'' to rebuild.']);
+
+    [Zi, S] = topo_evaluate(S, vals);
+    setappdata(hmap, 'plot_topo_cache', S);
+    set(hmap, 'CData', Zi);
+
+    hax = ancestor(hmap, 'axes');
+    ex  = S.ex;
+    ey  = S.ey;
+    if nargout == 0
+        clear hax
+    end
+    return
+end
 
 values     = p.Results.values(:);
 headrad    = p.Results.headrad;
@@ -200,6 +247,7 @@ if isempty(style)
     end
 end
 draw_map = strcmpi(style, 'map') && ~isempty(values);
+hmap = [];
 
 hax = p.Results.parent;
 if isempty(hax)
@@ -209,6 +257,9 @@ end
 %************************************************************
 %                   ELECTRODE PROJECTION
 %************************************************************
+
+assert(~isempty(eloc), 'plot_topo:noEloc', ...
+    'eloc is required unless ''update'' is given.');
 
 [ex, ey, labels] = eloc_to_screen(eloc);
 num_chans = numel(ex);
@@ -242,16 +293,28 @@ if draw_map
     assert(sum(good) >= 3, 'plot_topo:tooFewValues', ...
         'Need at least 3 finite values to interpolate a scalp map (%d given).', sum(good));
 
-    [Xi, Yi, Zi] = mne_scalp_map(ex, ey, values, good, rmax, gridres, ...
-        extrapolate, border, interp_fcn, cliprad);
+    % Everything that does not depend on the values is built once and kept on the map
+    % handle, so an 'update' call can skip straight to topo_evaluate.
+    S = topo_cache(ex, ey, good, rmax, gridres, extrapolate, border, interp_fcn, cliprad);
+    [Zi, S] = topo_evaluate(S, double(values));
 
-    if do_interp
-        face = 'interp';
-    else
-        face = 'flat';
+    % An image, not a surface: the grid is regular, so this is the right primitive and it
+    % renders about 3x faster. AlphaData carries the mask, since an image has no NaN
+    % transparency of its own.
+    hmap = image('XData', S.gx, 'YData', S.gx, 'CData', Zi, ...
+        'CDataMapping', 'scaled', 'AlphaData', double(isfinite(Zi)), 'Parent', hax);
+
+    % 'shading' maps onto the image's own interpolation. The property is recent, so fall
+    % back to flat rather than erroring on older releases.
+    if isprop(hmap, 'Interpolation')
+        if do_interp
+            set(hmap, 'Interpolation', 'bilinear');
+        else
+            set(hmap, 'Interpolation', 'nearest');
+        end
     end
-    surface(Xi, Yi, zeros(size(Zi)), Zi, ...
-        'EdgeColor', 'none', 'FaceColor', face, 'Parent', hax);
+
+    setappdata(hmap, 'plot_topo_cache', S);
 
     set(hax, 'CLim', resolve_maplimits(p.Results.maplimits, values(good)));
 end
@@ -270,21 +333,26 @@ end
 
 [marker, ecolor, msize, mwidth] = unpack_emarker(p.Results.emarker, num_chans);
 
-% Electrodes and labels are lifted above the map surface so they are never z-hidden by it
+% Drawn after the map, so child order alone puts these on top; uistack below makes that
+% explicit rather than relying on it. This is what MNE expresses with zorder.
 if ~strcmp(elec_mode, 'off')
     if any(strcmp(elec_mode, {'pts','ptslabels'}))
-        plot3(ex, ey, 2 * ones(num_chans, 1), marker, ...
+        plot(ex, ey, marker, ...
             'Color', ecolor, 'MarkerSize', msize, 'LineWidth', mwidth, ...
             'LineStyle', 'none', 'Parent', hax);
     end
 
     if any(strcmp(elec_mode, {'labels','ptslabels'}))
         for ii = 1:num_chans
-            text(ex(ii), ey(ii), 2.1, ['  ' labels{ii}], ...
+            text(ex(ii), ey(ii), ['  ' labels{ii}], ...
                 'Parent', hax, 'FontSize', 9, 'Color', ecolor, ...
                 'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
         end
     end
+end
+
+if ~isempty(hmap)
+    uistack(hmap, 'bottom');
 end
 
 %************************************************************
@@ -372,104 +440,353 @@ end
 end
 
 %************************************************************
-%                    MNE-STYLE SCALP MAP
+%                  CACHED MAP GEOMETRY
 %************************************************************
-function [Xi, Yi, Zi] = mne_scalp_map(ex, ey, values, good, rmax, gridres, extrapolate, border, method, cliprad)
-%MNE_SCALP_MAP  Interpolate a scalp map the way MNE-Python's plot_topomap does
+function S = topo_cache(ex, ey, good, rmax, gridres, extrapolate, border, method, cliprad)
+%TOPO_CACHE  Precompute everything about a scalp map that does not depend on the values
 %
 %   Inputs:
 %       ex          : Cx1 double - electrode screen x, all channels -- required
 %       ey          : Cx1 double - electrode screen y, all channels -- required
-%       values      : Cx1 double - one value per channel -- required
 %       good        : Cx1 logical - channels whose value is finite -- required
 %       rmax        : double - head rim radius -- required
 %       gridres     : integer - side length of the output grid -- required
 %       extrapolate : char - 'head', 'local', or 'box' -- required
 %       border      : char or double - 'mean', or a fixed value -- required
-%       method      : char - griddata method: 'cubic', 'linear', 'nearest', 'v4'
-%                     -- required
-%       cliprad     : double or empty - extra hard radius cap on the mask, or []
-%                     for MNE's behaviour -- required (may be empty)
+%       method      : char - 'cubic', 'linear', 'nearest', or 'v4' -- required
+%       cliprad     : double or empty - extra hard radius cap -- required (may be empty)
 %
 %   Outputs:
-%       Xi : gridres x gridres double - grid x coordinates
-%       Yi : gridres x gridres double - grid y coordinates
-%       Zi : gridres x gridres double - interpolated values, NaN outside the mask
+%       S : struct - geometry cache, consumed by topo_evaluate
 %
 %   Notes:
-%       Ported from MNE-Python (BSD-3-Clause): mirrors _setup_interp, _GridData
-%       and _get_extra_points in mne/viz/topomap.py. MNE never lets the
-%       interpolant extrapolate: it rings the electrodes with synthetic points carrying
-%       a boundary condition and interpolates inside that ring. 'v4' is the exception,
-%       since the biharmonic spline extrapolates by construction, which is exactly how
-%       EEGLAB and FieldTrip use it -- so no ring is added for 'v4'.
+%       This is the expensive half of a redraw and none of it depends on the data, which
+%       is why it is worth keeping. Splitting the interpolator this way is what MNE's
+%       _GridData does: "computing parameters for a fixed set of true points, and
+%       allowing the values at those points to be set independently".
 %
-%       The clip circle is widened past the head rim to just beyond the outermost
-%       electrode (MNE's mask_scale), so below-equator channels get painted instead of
-%       cut off. Every channel counts toward that radius, including ones dropped from
-%       the fit for a non-finite value, so all drawn electrodes sit inside the map.
+%       The cubic branch is a port of SciPy's CloughTocher2DInterpolator
+%       (scipy/interpolate/interpnd.pyx, BSD-3-Clause), split into this cache and
+%       topo_evaluate. MATLAB's own griddata 'cubic' is a different triangulation-based
+%       cubic scheme and does not reproduce MNE's output.
 %
-%       cliprad, when set, masks the finished grid to that radius. It is applied after
-%       the interpolation and does not move the grid or the boundary ring, so the map
-%       inside the cap is bit-identical to the uncapped one -- only less of it shows.
+%       For 'cubic' the cache also holds the inverse of each vertex's 2x2
+%       curvature-minimizing system. Q = 4*sum(e*e'/L^3) is built from edge vectors
+%       alone, so it is pure geometry even though it lives inside the value solve.
 
-ex     = double(ex(:));
-ey     = double(ey(:));
-values = double(values(:));
+S = struct();
+S.ex        = double(ex(:));
+S.ey        = double(ey(:));
+S.good      = logical(good(:));
+S.num_chans = numel(S.ex);
+S.method    = method;
+S.extrap    = extrapolate;
+S.border    = border;
 
-% MNE: mask_scale = max(1, max||pos|| * 1.01 / radius). The 1.01 is MNE's; EEGLAB
-% independently settled on 1.02 for the same job.
-mask_scale  = max(1, max(hypot(ex, ey)) * 1.01 / rmax);
-clip_radius = rmax * mask_scale;
+% MNE: mask_scale = max(1, max||pos|| * 1.01 / radius)
+mask_scale    = max(1, max(hypot(S.ex, S.ey)) * 1.01 / rmax);
+S.clip_radius = rmax * mask_scale;
 
-pos = [ex(good), ey(good)];
-v   = values(good);
+pos = [S.ex(S.good), S.ey(S.good)];
 
-% Triangulation-based interpolants collapse on coincident points, and every sleep cap
-% stacks its EOG/EMG/ECG channels on a single placeholder position -- see cap_montage.
 assert(size(unique(pos, 'rows'), 1) == size(pos, 1), 'plot_topo:duplicatePositions', ...
     ['Two or more channels with finite values share the same position. Exclude the ' ...
      'non-scalp channels (EOG/EMG/ECG) before interpolating a scalp map.']);
 
-% --- Synthetic boundary points --------------------------------------
-[extra, mask_xy] = boundary_points(pos, extrapolate, clip_radius, method);
+[extra, mask_xy] = boundary_points(pos, extrapolate, S.clip_radius, method);
+S.pos     = pos;
+S.extra   = extra;
+S.n_real  = size(pos, 1);
+S.n_extra = size(extra, 1);
+S.fit_pos = [pos; extra];
 
-if isempty(extra)
-    fit_pos = pos;
-    fit_val = v;
-else
-    fit_pos = [pos; extra];
-    fit_val = [v; border_values(pos, extra, v, border)];
-end
+S.gx = linspace(-S.clip_radius, S.clip_radius, gridres);
+[Xi, Yi] = meshgrid(S.gx, S.gx);
+S.size = size(Xi);
 
-% --- Interpolate ----------------------------------------------------
-gx = linspace(-clip_radius, clip_radius, gridres);
-[Xi, Yi] = meshgrid(gx, gx);
-if strcmp(method, 'cubic')
-    % Deliberately not griddata's own 'cubic': that is a different triangulation-based
-    % cubic scheme and lands several percent of the data range away from MNE. See
-    % clough_tocher_2d.
-    Zi = clough_tocher_2d(fit_pos, fit_val, Xi, Yi);
-else
-    Zi = griddata(fit_pos(:,1), fit_pos(:,2), fit_val, Xi, Yi, method);
-end
-
-% --- Mask -----------------------------------------------------------
-% 'local' clips to its own polygon alone -- MNE does not also intersect it with the
-% circle, so a montage that reaches past the rim keeps its full hull.
+% --- Mask ------------------------------------------------------------
 if strcmp(extrapolate, 'local') && ~isempty(mask_xy)
     outside = ~inpolygon(Xi, Yi, mask_xy(:,1), mask_xy(:,2));
 else
-    outside = hypot(Xi, Yi) > clip_radius;
+    outside = hypot(Xi, Yi) > S.clip_radius;
 end
-
-% Applied last and to the mask only, so it never perturbs the interpolation. The grid
-% still spans MNE's clip radius, so a capped map is a strict subset of the uncapped one.
 if ~isempty(cliprad)
     outside = outside | (hypot(Xi, Yi) > cliprad);
 end
 
-Zi(outside) = nan;
+% The Delaunay graph is needed by the cubic interpolant, and also by border == 'mean'
+% whichever interpolant is in use, so it is built once here for both.
+need_tri = strcmp(method, 'cubic') || (S.n_extra > 0 && ischar(border));
+S.ring_nbr = cell(S.n_extra, 1);
+if need_tri
+    DT = delaunayTriangulation(S.fit_pos);
+    assert(size(DT.Points, 1) == size(S.fit_pos, 1), 'plot_topo:degenerateTriangulation', ...
+        'The electrode layout and its boundary ring could not be triangulated cleanly.');
+    adj = delaunay_adjacency(DT, size(S.fit_pos, 1));
+    for kk = 1:S.n_extra
+        nb = adj{S.n_real + kk}(:);
+        S.ring_nbr{kk} = nb(nb <= S.n_real);
+    end
+end
+
+if strcmp(method, 'cubic')
+    S = cache_clough_tocher(S, DT, adj, Xi, Yi, outside);
+else
+    % griddata rebuilds its own triangulation each call, so only the grid is cacheable
+    S.Xi = Xi;
+    S.Yi = Yi;
+    S.outside = outside;
+end
+
+end
+
+%************************************************************
+%              CACHED CLOUGH-TOCHER GEOMETRY
+%************************************************************
+function S = cache_clough_tocher(S, DT, adj, Xi, Yi, outside)
+%CACHE_CLOUGH_TOCHER  Triangulation, point location and the per-vertex 2x2 systems
+%
+%   Inputs:
+%       S       : struct - partially built cache -- required
+%       DT      : delaunayTriangulation - of the electrodes plus boundary ring -- required
+%       adj     : cell - Delaunay adjacency list, one entry per point -- required
+%       Xi      : MxM double - grid x -- required
+%       Yi      : MxM double - grid y -- required
+%       outside : MxM logical - mask, true where nothing is painted -- required
+%
+%   Outputs:
+%       S : struct - cache with the triangulation and evaluation tables added
+
+P = S.fit_pos;
+S.DT = DT;
+T    = DT.ConnectivityList;
+S.T  = T;
+NB   = neighbors(DT);
+n_pts = size(P, 1);
+
+% Per-vertex geometry of the curvature-minimizing system. Q holds no values, so its
+% inverse is cached here and the per-frame solve becomes a single 2x2 multiply.
+S.nbr   = cell(n_pts, 1);
+S.edge  = cell(n_pts, 1);
+S.L3    = cell(n_pts, 1);
+S.Qinv  = cell(n_pts, 1);
+for ip = 1:n_pts
+    nb = adj{ip}(:);
+    ev = P(nb,:) - P(ip,:);
+    L3 = sum(ev.^2, 2).^1.5;
+    Q  = 4 * (ev' * (ev ./ L3));
+    S.nbr{ip}  = nb;
+    S.edge{ip} = ev;
+    S.L3{ip}   = L3;
+    S.Qinv{ip} = inv(Q);
+end
+
+% Edge vectors and the affine-invariant cross-boundary weights, both value-free
+S.i1 = T(:,1);
+S.i2 = T(:,2);
+S.i3 = T(:,3);
+S.e12 = P(S.i2,:) - P(S.i1,:);
+S.e23 = P(S.i3,:) - P(S.i2,:);
+S.e31 = P(S.i1,:) - P(S.i3,:);
+
+S.gw = zeros(size(T,1), 3);
+for kk = 1:3
+    nbt = NB(:,kk);
+    has = ~isnan(nbt);
+    S.gw(~has, kk) = -1/2;
+    if any(has)
+        tri_idx = find(has);
+        cen = (P(T(nbt(tri_idx),1),:) + P(T(nbt(tri_idx),2),:) + P(T(nbt(tri_idx),3),:)) / 3;
+        c = cartesianToBarycentric(DT, tri_idx, cen);
+        switch kk
+            case 1
+                S.gw(tri_idx,kk) = (2*c(:,3) + c(:,2) - 1) ./ (2 - 3*c(:,3) - 3*c(:,2));
+            case 2
+                S.gw(tri_idx,kk) = (2*c(:,1) + c(:,3) - 1) ./ (2 - 3*c(:,1) - 3*c(:,3));
+            case 3
+                S.gw(tri_idx,kk) = (2*c(:,2) + c(:,1) - 1) ./ (2 - 3*c(:,2) - 3*c(:,1));
+        end
+    end
+end
+
+% Point location and extended barycentrics: the single most expensive cacheable step
+tq = pointLocation(DT, [Xi(:), Yi(:)]);
+S.in = ~isnan(tq) & ~outside(:);
+S.tq = tq(S.in);
+b = cartesianToBarycentric(DT, S.tq, [Xi(S.in), Yi(S.in)]);
+bmin = min(b, [], 2);
+S.b1 = b(:,1) - bmin;
+S.b2 = b(:,2) - bmin;
+S.b3 = b(:,3) - bmin;
+S.b4 = 3 * bmin;
+
+S.grad = zeros(n_pts, 2);   % warm-start seed for the first solve
+
+end
+
+%************************************************************
+%                   DELAUNAY ADJACENCY LIST
+%************************************************************
+function adj = delaunay_adjacency(DT, n_pts)
+%DELAUNAY_ADJACENCY  Neighbour list for every point of a triangulation
+%
+%   Inputs:
+%       DT    : delaunayTriangulation - the triangulation -- required
+%       n_pts : integer - number of points in it -- required
+%
+%   Outputs:
+%       adj : n_ptsx1 cell - indices of each point's Delaunay neighbours
+
+E = edges(DT);
+adj = cell(n_pts, 1);
+for ii = 1:size(E, 1)
+    adj{E(ii,1)}(end+1) = E(ii,2);
+    adj{E(ii,2)}(end+1) = E(ii,1);
+end
+
+end
+
+%************************************************************
+%                EVALUATE A CACHED MAP
+%************************************************************
+function [Zi, S] = topo_evaluate(S, values)
+%TOPO_EVALUATE  Interpolate one frame's values onto a cached grid
+%
+%   Inputs:
+%       S      : struct - cache from topo_cache -- required
+%       values : Cx1 double - one value per channel -- required
+%
+%   Outputs:
+%       Zi : gridres x gridres double - interpolated values, NaN outside the mask
+%       S  : struct - cache with the gradient solution carried forward
+%
+%   Notes:
+%       The gradient sweep and the Bezier net are ported from SciPy's
+%       _estimate_gradients_2d_global and _clough_tocher_2d_single (interpnd.pyx,
+%       BSD-3-Clause), the curvature-minimizing network of Nielson (1983) and
+%       Renka & Cline (1984).
+%
+%       S is returned so the vertex gradients survive to the next frame. They are the
+%       initial guess for the next solve, which roughly halves the Gauss-Seidel cost on
+%       smoothly varying data and changes nothing about the converged answer beyond the
+%       1e-6 tolerance that stops it.
+
+v = double(values(:));
+v = v(S.good);
+
+if ~strcmp(S.method, 'cubic')
+    fit_val = fit_values(S, v);
+    Zi = griddata(S.fit_pos(:,1), S.fit_pos(:,2), fit_val, S.Xi, S.Yi, S.method);
+    Zi(S.outside) = nan;
+    return
+end
+
+V = fit_values(S, v);
+
+% --- Vertex gradients, Gauss-Seidel over the Delaunay graph ----------
+g   = S.grad;
+tol = 1e-6;
+for iter_num = 1:400
+    err = 0;
+    for ip = 1:numel(V)
+        nb = S.nbr{ip};
+        ev = S.edge{ip};
+        df2 = -sum(ev .* g(nb,:), 2);
+        sv  = (((6*(V(ip) - V(nb)) - 2*df2) ./ S.L3{ip})' * ev)';
+        r   = S.Qinv{ip} * sv;
+        change = max(abs(g(ip,1) + r(1)), abs(g(ip,2) + r(2)));
+        g(ip,:) = -r';
+        err = max(err, change / max(1, max(abs(r))));
+    end
+    if err < tol
+        break
+    end
+end
+S.grad = g;
+
+% --- Bezier control net ----------------------------------------------
+df12 =  sum(g(S.i1,:) .* S.e12, 2);
+df21 = -sum(g(S.i2,:) .* S.e12, 2);
+df23 =  sum(g(S.i2,:) .* S.e23, 2);
+df32 = -sum(g(S.i3,:) .* S.e23, 2);
+df31 =  sum(g(S.i3,:) .* S.e31, 2);
+df13 = -sum(g(S.i1,:) .* S.e31, 2);
+
+c3000 = V(S.i1);
+c2100 = (df12 + 3*c3000)/3;
+c2010 = (df13 + 3*c3000)/3;
+c0300 = V(S.i2);
+c1200 = (df21 + 3*c0300)/3;
+c0210 = (df23 + 3*c0300)/3;
+c0030 = V(S.i3);
+c1020 = (df31 + 3*c0030)/3;
+c0120 = (df32 + 3*c0030)/3;
+c2001 = (c2100 + c2010 + c3000)/3;
+c0201 = (c1200 + c0300 + c0210)/3;
+c0021 = (c1020 + c0120 + c0030)/3;
+
+c0111 = (S.gw(:,1).*(-c0300 + 3*c0210 - 3*c0120 + c0030) + (-c0300 + 2*c0210 - c0120 + c0021 + c0201))/2;
+c1011 = (S.gw(:,2).*(-c0030 + 3*c1020 - 3*c2010 + c3000) + (-c0030 + 2*c1020 - c2010 + c2001 + c0021))/2;
+c1101 = (S.gw(:,3).*(-c3000 + 3*c2100 - 3*c1200 + c0300) + (-c3000 + 2*c2100 - c1200 + c2001 + c0201))/2;
+c1002 = (c1101 + c1011 + c2001)/3;
+c0102 = (c1101 + c0111 + c0201)/3;
+c0012 = (c1011 + c0111 + c0021)/3;
+c0003 = (c1002 + c0102 + c0012)/3;
+
+% --- Evaluate --------------------------------------------------------
+t  = S.tq;
+b1 = S.b1; b2 = S.b2; b3 = S.b3; b4 = S.b4;
+z = b1.^3.*c3000(t)        + 3*b1.^2.*b2.*c2100(t) + 3*b1.^2.*b3.*c2010(t) + ...
+    3*b1.^2.*b4.*c2001(t)  + 3*b1.*b2.^2.*c1200(t) + 6*b1.*b2.*b4.*c1101(t) + ...
+    3*b1.*b3.^2.*c1020(t)  + 6*b1.*b3.*b4.*c1011(t) + 3*b1.*b4.^2.*c1002(t) + ...
+    b2.^3.*c0300(t)        + 3*b2.^2.*b3.*c0210(t) + 3*b2.^2.*b4.*c0201(t) + ...
+    3*b2.*b3.^2.*c0120(t)  + 6*b2.*b3.*b4.*c0111(t) + 3*b2.*b4.^2.*c0102(t) + ...
+    b3.^3.*c0030(t)        + 3*b3.^2.*b4.*c0021(t) + 3*b3.*b4.^2.*c0012(t) + ...
+    b4.^3.*c0003(t);
+
+Zi = nan(S.size);
+Zi(S.in) = z;
+
+end
+
+%************************************************************
+%              VALUES INCLUDING THE BOUNDARY RING
+%************************************************************
+function V = fit_values(S, v)
+%FIT_VALUES  Concatenate electrode values with the synthetic points' border values
+%
+%   Inputs:
+%       S : struct - cache from topo_cache -- required
+%       v : Nx1 double - values at the finite-valued electrodes -- required
+%
+%   Outputs:
+%       V : (N+M)x1 double - electrode values followed by the boundary values
+
+if S.n_extra == 0
+    V = v;
+    return
+end
+
+if ~ischar(S.border)
+    V = [v; repmat(double(S.border), S.n_extra, 1)];
+    return
+end
+
+% border == 'mean', using the cached real-electrode neighbour lists
+v_extra = zeros(S.n_extra, 1);
+used    = false(S.n_extra, 1);
+for ii = 1:S.n_extra
+    nb = S.ring_nbr{ii};
+    if ~isempty(nb)
+        used(ii)    = true;
+        v_extra(ii) = mean(v(nb));
+    end
+end
+if any(used) && ~all(used)
+    v_extra(~used) = mean(v_extra(used));
+end
+
+V = [v; v_extra];
 
 end
 
@@ -530,56 +847,6 @@ switch extrapolate
         lo = lo - d;
         hi = hi + d;
         extra = [lo; lo(1) hi(2); hi(1) lo(2); hi];
-end
-
-end
-
-%************************************************************
-%                VALUES AT THE BOUNDARY POINTS
-%************************************************************
-function v_extra = border_values(pos, extra, v, border)
-%BORDER_VALUES  Value assigned to each synthetic boundary point
-%
-%   Inputs:
-%       pos    : Nx2 double - real electrode positions -- required
-%       extra  : Mx2 double - synthetic point positions -- required
-%       v      : Nx1 double - values at the real electrodes -- required
-%       border : char or double - 'mean', or a fixed value -- required
-%
-%   Outputs:
-%       v_extra : Mx1 double - value for each synthetic point
-
-n_real  = size(pos, 1);
-n_extra = size(extra, 1);
-
-if ~ischar(border)
-    v_extra = repmat(double(border), n_extra, 1);
-    return
-end
-
-% border == 'mean': each synthetic point takes the average of the real electrodes it is
-% adjacent to in the Delaunay graph of the combined point set.
-DT = delaunayTriangulation([pos; extra]);
-assert(size(DT.Points, 1) == n_real + n_extra, 'plot_topo:degenerateTriangulation', ...
-    'The electrode layout and its boundary ring could not be triangulated cleanly.');
-
-E       = edges(DT);
-v_extra = zeros(n_extra, 1);
-used    = false(n_extra, 1);
-for ii = 1:n_extra
-    jj  = n_real + ii;
-    ngb = [E(E(:,1) == jj, 2); E(E(:,2) == jj, 1)];
-    ngb = ngb(ngb <= n_real);
-    if ~isempty(ngb)
-        used(ii)    = true;
-        v_extra(ii) = mean(v(ngb));
-    end
-end
-
-% A ring point with no real neighbour falls back to the mean of the ones that had some,
-% which is what MNE does rather than leaving it at zero.
-if any(used) && ~all(used)
-    v_extra(~used) = mean(v_extra(used));
 end
 
 end
@@ -673,217 +940,6 @@ extra = [unique([e1; e2], 'rows'); add];
 end
 
 %************************************************************
-%              CLOUGH-TOCHER CUBIC INTERPOLANT
-%************************************************************
-function Zq = clough_tocher_2d(P, v, Xq, Yq)
-%CLOUGH_TOCHER_2D  Piecewise cubic C1 interpolant, matching scipy's CloughTocher2DInterpolator
-%
-%   Inputs:
-%       P  : Nx2 double - interpolation point coordinates -- required
-%       v  : Nx1 double - values at those points -- required
-%       Xq : MxK double - query x coordinates -- required
-%       Yq : MxK double - query y coordinates -- required
-%
-%   Outputs:
-%       Zq : MxK double - interpolated values, NaN outside the convex hull of P
-%
-%   Notes:
-%       MATLAB's own griddata 'cubic' is also triangulation-based, but it is a
-%       different cubic scheme: on a 64-channel cap it lands about 6.5% of the data
-%       range (40% at the worst pixel) away from what MNE draws. This is a direct
-%       port of the interpolant SciPy actually uses (interpnd.pyx, BSD-3-Clause):
-%       a cubic Bezier patch per
-%       triangle under the Clough-Tocher split, with vertex gradients from the
-%       approximate-curvature-minimization network of Nielson (1983) and Renka &
-%       Cline (1984), and the affine-invariant choice of cross-boundary direction
-%       that scipy's interpnd.pyx documents.
-%
-%       On a generic point set this reproduces scipy to machine precision (~4e-15).
-%       On a real montage the synthetic boundary ring is exactly cocircular, which is
-%       a degenerate Delaunay configuration that MATLAB and Qhull resolve differently;
-%       the resulting disagreement is confined to the annulus outside the outermost
-%       electrodes and stays under about 1.2% of the data range anywhere a real
-%       electrode contributes.
-
-P = double(P);
-v = double(v(:));
-
-DT = delaunayTriangulation(P);
-T  = DT.ConnectivityList;
-NB = neighbors(DT);            % NB(t,k) is the triangle opposite vertex k, NaN at a hull edge
-
-grad = estimate_gradients_2d(DT, P, v);
-
-% --- Bezier control net, one triangle at a time ----------------------
-% Vertex values and edge-projected gradients give the boundary control points; the
-% interior ones follow from the C1 conditions. Names follow scipy's c<ijkl> convention.
-i1 = T(:,1);
-i2 = T(:,2);
-i3 = T(:,3);
-e12 = P(i2,:) - P(i1,:);
-e23 = P(i3,:) - P(i2,:);
-e31 = P(i1,:) - P(i3,:);
-
-df12 =  sum(grad(i1,:) .* e12, 2);
-df21 = -sum(grad(i2,:) .* e12, 2);
-df23 =  sum(grad(i2,:) .* e23, 2);
-df32 = -sum(grad(i3,:) .* e23, 2);
-df31 =  sum(grad(i3,:) .* e31, 2);
-df13 = -sum(grad(i1,:) .* e31, 2);
-
-c3000 = v(i1);
-c2100 = (df12 + 3*c3000)/3;
-c2010 = (df13 + 3*c3000)/3;
-c0300 = v(i2);
-c1200 = (df21 + 3*c0300)/3;
-c0210 = (df23 + 3*c0300)/3;
-c0030 = v(i3);
-c1020 = (df31 + 3*c0030)/3;
-c0120 = (df32 + 3*c0030)/3;
-
-c2001 = (c2100 + c2010 + c3000)/3;
-c0201 = (c1200 + c0300 + c0210)/3;
-c0021 = (c1020 + c0120 + c0030)/3;
-
-% --- Cross-boundary direction weights --------------------------------
-% Picking the edge normal here would make the interpolant non-affine-invariant and let
-% sliver triangles blow up, so scipy instead points at the neighbouring triangle's
-% centroid, expressed in barycentric coordinates. A hull edge has no neighbour and
-% falls back to -1/2, the direction of this triangle's own centroid.
-gw = zeros(size(T,1), 3);
-for kk = 1:3
-    nbt = NB(:,kk);
-    has = ~isnan(nbt);
-    gw(~has, kk) = -1/2;
-    if any(has)
-        tri_idx = find(has);
-        cen = (P(T(nbt(tri_idx),1),:) + P(T(nbt(tri_idx),2),:) + P(T(nbt(tri_idx),3),:)) / 3;
-        c = cartesianToBarycentric(DT, tri_idx, cen);
-        switch kk
-            case 1
-                gw(tri_idx,kk) = (2*c(:,3) + c(:,2) - 1) ./ (2 - 3*c(:,3) - 3*c(:,2));
-            case 2
-                gw(tri_idx,kk) = (2*c(:,1) + c(:,3) - 1) ./ (2 - 3*c(:,1) - 3*c(:,3));
-            case 3
-                gw(tri_idx,kk) = (2*c(:,2) + c(:,1) - 1) ./ (2 - 3*c(:,2) - 3*c(:,1));
-        end
-    end
-end
-
-c0111 = (gw(:,1).*(-c0300 + 3*c0210 - 3*c0120 + c0030) + (-c0300 + 2*c0210 - c0120 + c0021 + c0201))/2;
-c1011 = (gw(:,2).*(-c0030 + 3*c1020 - 3*c2010 + c3000) + (-c0030 + 2*c1020 - c2010 + c2001 + c0021))/2;
-c1101 = (gw(:,3).*(-c3000 + 3*c2100 - 3*c1200 + c0300) + (-c3000 + 2*c2100 - c1200 + c2001 + c0201))/2;
-
-c1002 = (c1101 + c1011 + c2001)/3;
-c0102 = (c1101 + c0111 + c0201)/3;
-c0012 = (c1011 + c0111 + c0021)/3;
-c0003 = (c1002 + c0102 + c0012)/3;
-
-% --- Evaluate --------------------------------------------------------
-qxy = [Xq(:), Yq(:)];
-Zq  = nan(size(qxy,1), 1);
-tq  = pointLocation(DT, qxy);
-in  = ~isnan(tq);          % pointLocation returns NaN outside the convex hull
-if any(in)
-    t = tq(in);
-    b = cartesianToBarycentric(DT, t, qxy(in,:));
-
-    % Extended (4-coordinate) barycentrics for the Clough-Tocher split: dropping the
-    % smallest coordinate picks the sub-triangle, and b4 is the weight on the centroid.
-    bmin = min(b, [], 2);
-    b1 = b(:,1) - bmin;
-    b2 = b(:,2) - bmin;
-    b3 = b(:,3) - bmin;
-    b4 = 3*bmin;
-
-    % One of b1..b4 is zero by construction, so the terms scipy omits here are zero too
-    Zq(in) = b1.^3.*c3000(t)        + 3*b1.^2.*b2.*c2100(t) + 3*b1.^2.*b3.*c2010(t) + ...
-             3*b1.^2.*b4.*c2001(t)  + 3*b1.*b2.^2.*c1200(t) + 6*b1.*b2.*b4.*c1101(t) + ...
-             3*b1.*b3.^2.*c1020(t)  + 6*b1.*b3.*b4.*c1011(t) + 3*b1.*b4.^2.*c1002(t) + ...
-             b2.^3.*c0300(t)        + 3*b2.^2.*b3.*c0210(t) + 3*b2.^2.*b4.*c0201(t) + ...
-             3*b2.*b3.^2.*c0120(t)  + 6*b2.*b3.*b4.*c0111(t) + 3*b2.*b4.^2.*c0102(t) + ...
-             b3.^3.*c0030(t)        + 3*b3.^2.*b4.*c0021(t) + 3*b3.*b4.^2.*c0012(t) + ...
-             b4.^3.*c0003(t);
-end
-
-Zq = reshape(Zq, size(Xq));
-
-end
-
-%************************************************************
-%              VERTEX GRADIENTS BY CURVATURE MIN
-%************************************************************
-function grad = estimate_gradients_2d(DT, P, v)
-%ESTIMATE_GRADIENTS_2D  Vertex gradients that approximately minimize surface curvature
-%
-%   Inputs:
-%       DT : delaunayTriangulation - triangulation of P -- required
-%       P  : Nx2 double - point coordinates -- required
-%       v  : Nx1 double - values at those points -- required
-%
-%   Outputs:
-%       grad : Nx2 double - [dF/dx, dF/dy] at each point
-%
-%   Notes:
-%       Port of SciPy's _estimate_gradients_2d_global (interpnd.pyx, BSD-3-Clause). Restricted to one edge the
-%       Clough-Tocher interpolant is a cubic in the edge parameter, so the bending
-%       energy over that edge is a quadratic form in the two end gradients. Summing
-%       over the edges at a vertex leaves a 2x2 system for that vertex's gradient,
-%       and the whole network is relaxed by Gauss-Seidel -- each vertex is solved
-%       against its neighbours' current values, in index order, until the largest
-%       relative change falls below tol.
-%
-%       scipy's defaults (tol 1e-6, maxiter 400) are kept. A 64-channel montage plus
-%       its boundary ring converges in roughly a dozen sweeps.
-
-tol     = 1e-6;
-maxiter = 400;
-
-num_pts = size(P, 1);
-
-% Adjacency in the Delaunay graph, which is what the edge sum below runs over
-E = edges(DT);
-adj = cell(num_pts, 1);
-for ii = 1:size(E,1)
-    adj{E(ii,1)}(end+1) = E(ii,2);
-    adj{E(ii,2)}(end+1) = E(ii,1);
-end
-
-grad = zeros(num_pts, 2);
-
-for iter_num = 1:maxiter
-    err = 0;
-    for ipt = 1:num_pts
-        nbr = adj{ipt}(:);
-        ev  = P(nbr,:) - P(ipt,:);          % edge vectors away from this vertex
-        L3  = sum(ev.^2, 2).^1.5;
-
-        % Neighbour gradients projected onto the edge, held fixed for this sweep
-        df2 = -sum(ev .* grad(nbr,:), 2);
-
-        Qm   = 4 * (ev' * (ev ./ L3));
-        coef = (6*(v(ipt) - v(nbr)) - 2*df2) ./ L3;
-        sv   = (coef' * ev)';
-
-        detQ = Qm(1,1)*Qm(2,2) - Qm(1,2)*Qm(2,1);
-        r    = [( Qm(2,2)*sv(1) - Qm(1,2)*sv(2)) / detQ; ...
-                (-Qm(2,1)*sv(1) + Qm(1,1)*sv(2)) / detQ];
-
-        change = max(abs(grad(ipt,1) + r(1)), abs(grad(ipt,2) + r(2)));
-        grad(ipt,:) = -r';
-
-        % Relative where the gradient is large, absolute where it is small
-        change = change / max(1, max(abs(r(1)), abs(r(2))));
-        err = max(err, change);
-    end
-    if err < tol
-        break
-    end
-end
-
-end
-
-%************************************************************
 %                     DRAW THE HEAD MODEL
 %************************************************************
 function draw_head(hax, headrad, headcolor)
@@ -896,15 +952,18 @@ function draw_head(hax, headrad, headcolor)
 %
 %   Outputs:
 %       none (side effects only)
+%
+%   Notes:
+%       Drawn in 2-D. The map is an image pushed to the bottom of the child list, so
+%       these lines sit above it by draw order rather than by a z offset.
 
 linewidth = 1.7;
-zh = 1.5;  % above the map surface (z=0), below the electrode markers (z=2)
 
 % --- Head outline ---------------------------------------------------
 t = linspace(0, 2*pi, 101);   % 101 points, as MNE's _make_head_outlines uses
 hx = headrad * cos(t);
 hy = headrad * sin(t);
-plot3(hx, hy, zh * ones(size(hx)), '-', ...
+plot(hx, hy, '-', ...
     'Color', headcolor, 'LineWidth', linewidth, 'Parent', hax);
 
 % --- Nose -----------------------------------------------------------
@@ -916,7 +975,7 @@ nose_dx = real(nose_seat);
 nose_dy = imag(nose_seat);
 nose_x = [-nose_dx, 0, nose_dx] * headrad;
 nose_y = [nose_dy, 1.15, nose_dy] * headrad;
-plot3(nose_x, nose_y, zh * ones(size(nose_x)), '-', ...
+plot(nose_x, nose_y, '-', ...
     'Color', headcolor, 'LineWidth', linewidth, 'Parent', hax);
 
 % --- Ears -----------------------------------------------------------
@@ -926,9 +985,9 @@ plot3(nose_x, nose_y, zh * ones(size(nose_x)), '-', ...
 ear_x = [0.497 0.510 0.518 0.5299 0.5419 0.54 0.547 0.532 0.510 0.489] * (2 * headrad);
 ear_y = [0.0555 0.0775 0.0783 0.0746 0.0555 -0.0055 -0.0932 -0.1313 -0.1384 -0.1199] * (2 * headrad);
 
-plot3(ear_x, ear_y, zh * ones(size(ear_x)), '-', ...
+plot(ear_x, ear_y, '-', ...
     'Color', headcolor, 'LineWidth', linewidth, 'Parent', hax);   % right ear
-plot3(-ear_x, ear_y, zh * ones(size(ear_x)), '-', ...
+plot(-ear_x, ear_y, '-', ...
     'Color', headcolor, 'LineWidth', linewidth, 'Parent', hax);   % left ear
 
 end

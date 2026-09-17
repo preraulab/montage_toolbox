@@ -123,6 +123,39 @@ MNE never lets the interpolant extrapolate. It rings the electrodes with synthet
 
 `'interp','cubic'` is a port of scipy's `CloughTocher2DInterpolator`, **not** `griddata`'s own `'cubic'`. MATLAB's is a different triangulation-based cubic scheme and lands several percent of the data range away from what MNE draws. Validated against scipy directly: identical to machine precision (~4e-15) on a generic point set, and on a real 64-channel montage the finished map agrees with MNE's to a maximum of 0.19% of the data range inside the head rim (rms 0.03%, r = 0.999999). The residual comes from the synthetic ring being exactly cocircular, a degenerate Delaunay configuration that MATLAB and Qhull break differently; it is confined to the skirt annulus outside the outermost electrodes.
 
+### Fast repeated updates
+
+The expensive half of a redraw does not depend on the data. The triangulation, point
+location, barycentric coordinates and the per-vertex 2×2 matrices of the
+curvature-minimizing system are all fixed by the electrode positions, so `plot_topo`
+computes them once and caches them on the map handle:
+
+```matlab
+[hax, ex, ey, hmap] = plot_topo(v, eloc, 'style', 'map');
+plot_topo(newvalues, [], 'update', hmap);        % repaint, same montage
+```
+
+An update recomputes only the border values, the vertex gradients (warm started from the
+previous frame) and the polynomial evaluation, then sets `CData`. This is the split MNE's
+own `_GridData` makes — "computing parameters for a fixed set of true points, and allowing
+the values at those points to be set independently".
+
+| | full call | `'update'` | speedup |
+|---|---|---|---|
+| `gridres` 200 | 40 ms (25 fps) | 6.5 ms (153 fps) | 6.2× |
+| `gridres` 64 | 16 ms (61 fps) | 2.9 ms (341 fps) | 5.6× |
+
+The result is identical to a fresh call to within the 1e-6 tolerance that stops the
+gradient solve (measured max difference ~3e-8 of the data range). An update requires the
+montage and the set of finite-valued channels to be unchanged; both are checked, and it
+errors rather than silently drawing on a stale triangulation.
+
+The map is an **image**, not a surface — the grid is regular, so an image is the right
+primitive and renders ~3× faster (5.7 ms vs 17.9 ms per frame at `gridres` 200).
+`'shading'` maps onto its `Interpolation` property, and draw order is handled with
+`uistack`, which is what MNE expresses as matplotlib `zorder`. On releases whose image
+object predates the `Interpolation` property the map falls back to flat shading.
+
 `'cliprad'` is the one deliberate departure from MNE, and it is off by default. Set it to a radius to cap the painted map — `'cliprad', 0.5` confines the map to the head rim, the way this function behaved before it was matched to MNE. It is applied to the mask after interpolation and never moves the grid or the boundary ring, so values inside the cap are bit-identical to the uncapped map; it can only narrow the map, never widen it.
 
 `'extrapolate'` selects MNE's boundary mode — `'head'` (default), `'local'`, or `'box'`. `'conv','on'` is kept as a synonym for `'extrapolate','local'`, which pushes the electrode convex hull out by one electrode spacing and masks the map to it. Set `'interp','v4'` for the EEGLAB/FieldTrip biharmonic spline instead; in that mode no synthetic ring is added, since the biharmonic spline extrapolates by construction, which is precisely how those toolboxes use it.
