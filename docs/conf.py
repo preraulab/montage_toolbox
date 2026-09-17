@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-project = "channelbrowse"
+project = "montage_toolbox"
 author = "Michael J. Prerau Laboratory"
 copyright = "2011-present, Michael J. Prerau Laboratory"
 

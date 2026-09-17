@@ -1,0 +1,66 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below, and cite MNE-Python and SciPy for the scalp-map interpolation."
+title: "montage_toolbox: EEG electrode montages and scalp topography for MATLAB"
+authors:
+  - name: "Michael J. Prerau Laboratory"
+    website: "https://sleepeeg.org"
+license: BSD-3-Clause
+repository-code: "https://github.com/preraulab/montage_toolbox"
+url: "https://sleepeeg.org"
+type: software
+references:
+  - type: article
+    title: "MEG and EEG data analysis with MNE-Python"
+    authors:
+      - family-names: Gramfort
+        given-names: Alexandre
+      - family-names: Luessi
+        given-names: Martin
+      - family-names: Larson
+        given-names: Eric
+    journal: "Frontiers in Neuroscience"
+    volume: 7
+    start: 267
+    year: 2013
+    doi: "10.3389/fnins.2013.00267"
+    notes: "plot_topo's scalp map reproduces MNE-Python's plot_topomap."
+  - type: article
+    title: "SciPy 1.0: fundamental algorithms for scientific computing in Python"
+    authors:
+      - family-names: Virtanen
+        given-names: Pauli
+      - family-names: Gommers
+        given-names: Ralf
+      - family-names: Oliphant
+        given-names: "Travis E."
+    journal: "Nature Methods"
+    volume: 17
+    start: 261
+    end: 272
+    year: 2020
+    doi: "10.1038/s41592-019-0686-2"
+    notes: "The Clough-Tocher interpolant is a port of scipy.interpolate.CloughTocher2DInterpolator."
+  - type: article
+    title: "A method for interpolating scattered data based upon a minimum norm network"
+    authors:
+      - family-names: Nielson
+        given-names: "Gregory M."
+    journal: "Mathematics of Computation"
+    volume: 40
+    start: 253
+    end: 271
+    year: 1983
+    doi: "10.1090/S0025-5718-1983-0679444-7"
+  - type: article
+    title: "A triangle-based C1 interpolation method"
+    authors:
+      - family-names: Renka
+        given-names: "Robert J."
+      - family-names: Cline
+        given-names: "Alan K."
+    journal: "Rocky Mountain Journal of Mathematics"
+    volume: 14
+    start: 223
+    end: 237
+    year: 1984
+    doi: "10.1216/RMJ-1984-14-1-223"

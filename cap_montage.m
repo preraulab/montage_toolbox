@@ -17,7 +17,7 @@ function varargout = cap_montage(name)
 %
 %   Outputs:
 %       varargout : with a montage name, the 1xC eloc struct ready for
-%                   plot_topo or channelbrowse. With 'list', a cell array of
+%                   plot_topo or any downstream browser. With 'list', a cell array of
 %                   names, or nothing (prints a table) when called without an
 %                   output
 %
@@ -45,7 +45,7 @@ function varargout = cap_montage(name)
 %   Example:
 %       eloc = cap_montage('BC-SL-64');
 %       scalp = eloc(~ismember({eloc.labels}, {'EOG1','EOG2','EMG1','EMG2','EMG3','ECG'}));
-%       channelbrowse(mdata, 'eloc', scalp);
+%       plot_topo(vals(1:numel(scalp)), scalp, 'style', 'map');
 %
 %   See also: build_montage_library, read_montage, default_montage, plot_topo
 %
@@ -134,7 +134,7 @@ function lib = library()
 %   Outputs:
 %       lib : struct - the montage library (see build_montage_library)
 
-% Cached across calls: channelbrowse resolves a montage on every launch, and
+% Cached across calls: a browser resolves a montage on every launch, and
 % re-reading the .mat each time is pure overhead. clear('cap_montage') to reload
 % after a rebuild.
 persistent cached

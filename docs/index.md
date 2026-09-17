@@ -1,4 +1,4 @@
-# channelbrowse
+# montage_toolbox
 
 ```{include} ../README.md
 :start-line: 1

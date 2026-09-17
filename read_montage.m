@@ -77,7 +77,7 @@ function eloc = read_montage(filename, varargin)
 %       eloc = read_montage('standard_64.sfp');
 %       plot_topo([], eloc, 'electrodes', 'ptslabels');
 %
-%   See also: plot_topo, channelbrowse, channelbrowse_hist
+%   See also: plot_topo, cap_montage, xyz_to_eloc, build_montage_library
 %
 %   ∿∿∿  Prerau Laboratory MATLAB Codebase · sleepEEG.org  ∿∿∿
 
@@ -641,7 +641,7 @@ end
 % break the one-to-one match between eloc(k) and the data's channel k. So warn
 % instead: interpolating a map over them silently averages contradictory values
 % at one location and returns a plausible-looking wrong answer rather than
-% failing. 25 of the 107 BrainVision/EGI montages we have are affected.
+% failing. 25 of the 109 montages in the library are affected.
 ex_v = radius(:) .* sin([eloc.theta]'*pi/180);
 ey_v = radius(:) .* cos([eloc.theta]'*pi/180);
 Dsq = hypot(ex_v - ex_v', ey_v - ey_v');

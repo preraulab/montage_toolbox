@@ -21,8 +21,8 @@ function [eloc, source] = default_montage(n_chans)
 %       a missing one is a broken install rather than an expected state, and
 %       cap_montage's noLibrary error is allowed to propagate.
 %
-%       Any cap in the library can be used instead by name:
-%       channelbrowse(mdata, 'eloc', cap_montage('BC-SL-64')).
+%       Any cap in the library can be used instead by name, e.g.
+%       cap_montage('BC-SL-64').
 %
 %       6 and 19 channels resolve to the clinical standards -- 'AASM-6'
 %       (F3 F4 C3 C4 O1 O2) and '10-20' -- both of which are also addressable
@@ -32,7 +32,7 @@ function [eloc, source] = default_montage(n_chans)
 %       [eloc, src] = default_montage(64);
 %       plot_topo([], eloc, 'electrodes', 'ptslabels');
 %
-%   See also: cap_montage, read_montage, plot_topo, channelbrowse
+%   See also: cap_montage, read_montage, plot_topo, xyz_to_eloc
 %
 %   ∿∿∿  Prerau Laboratory MATLAB Codebase · sleepEEG.org  ∿∿∿
 

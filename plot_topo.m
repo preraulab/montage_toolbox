@@ -110,7 +110,18 @@ function [hax, ex, ey] = plot_topo(values, eloc, varargin)
 %       eloc = cap_montage('AC-64');
 %       [~, ex, ey] = plot_topo(randn(64,1), eloc, 'style', 'map');
 %
-%   See also: channelbrowse, channelbrowse_hist, channelcheck
+%   Credit:
+%       The scalp map is a deliberate reimplementation of MNE-Python's
+%       mne.viz.plot_topomap (mne/viz/topomap.py): its projection, synthetic
+%       boundary ring and 'mean' border condition, clip radius, extrapolation
+%       modes, and head/nose/ear geometry. The Clough-Tocher interpolant in
+%       clough_tocher_2d and estimate_gradients_2d is a port of SciPy's
+%       CloughTocher2DInterpolator (scipy/interpolate/interpnd.pyx). Both
+%       projects are BSD-3-Clause, as is this file; neither endorses this port.
+%       Please cite Gramfort et al. (2013) and Virtanen et al. (2020) alongside
+%       this toolbox. See README.md for the full reference list.
+%
+%   See also: cap_montage, read_montage, default_montage, xyz_to_eloc
 %
 %   ∿∿∿  Prerau Laboratory MATLAB Codebase · sleepEEG.org  ∿∿∿
 
@@ -386,7 +397,8 @@ function [Xi, Yi, Zi] = mne_scalp_map(ex, ey, values, good, rmax, gridres, extra
 %       Zi : gridres x gridres double - interpolated values, NaN outside the mask
 %
 %   Notes:
-%       Mirrors MNE's _setup_interp / _GridData / _get_extra_points. MNE never lets the
+%       Ported from MNE-Python (BSD-3-Clause): mirrors _setup_interp, _GridData
+%       and _get_extra_points in mne/viz/topomap.py. MNE never lets the
 %       interpolant extrapolate: it rings the electrodes with synthetic points carrying
 %       a boundary condition and interpolates inside that ring. 'v4' is the exception,
 %       since the biharmonic spline extrapolates by construction, which is exactly how
@@ -679,7 +691,8 @@ function Zq = clough_tocher_2d(P, v, Xq, Yq)
 %       MATLAB's own griddata 'cubic' is also triangulation-based, but it is a
 %       different cubic scheme: on a 64-channel cap it lands about 6.5% of the data
 %       range (40% at the worst pixel) away from what MNE draws. This is a direct
-%       port of the interpolant scipy actually uses -- a cubic Bezier patch per
+%       port of the interpolant SciPy actually uses (interpnd.pyx, BSD-3-Clause):
+%       a cubic Bezier patch per
 %       triangle under the Clough-Tocher split, with vertex gradients from the
 %       approximate-curvature-minimization network of Nielson (1983) and Renka &
 %       Cline (1984), and the affine-invariant choice of cross-boundary direction
@@ -812,7 +825,7 @@ function grad = estimate_gradients_2d(DT, P, v)
 %       grad : Nx2 double - [dF/dx, dF/dy] at each point
 %
 %   Notes:
-%       Port of scipy's _estimate_gradients_2d_global. Restricted to one edge the
+%       Port of SciPy's _estimate_gradients_2d_global (interpnd.pyx, BSD-3-Clause). Restricted to one edge the
 %       Clough-Tocher interpolant is a cubic in the edge parameter, so the bending
 %       energy over that edge is a quadratic form in the two end gradients. Summing
 %       over the edges at a vertex leaves a 2x2 system for that vertex's gradient,

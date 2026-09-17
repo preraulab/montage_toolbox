@@ -33,7 +33,7 @@ function lib = build_montage_library(varargin)
 %       Deduplication is by ordered channel list AND coordinates. Vendors ship
 %       the same arrangement under many product names -- eleven 32-channel codes
 %       share one layout -- so the library stores each distinct layout once and
-%       maps every name onto it. 107 names collapse to 65 layouts.
+%       maps every name onto it. 109 names collapse to 65 layouts.
 %
 %       Both halves of that signature are load-bearing. Order matters because
 %       eloc(k) must line up with the data's channel k. Geometry matters because
