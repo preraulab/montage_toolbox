@@ -34,7 +34,7 @@ head coordinates: the origin is where the nasion projects onto the line joining 
 preauricular points.
 
 Two conventions of this cap are worth stating, because neither is guessable from the
-file. Electrodes are labelled `1`..`64` — the cap numbers its holders rather than
+file. Electrodes are labeled `1`..`64` — the cap numbers its holders rather than
 naming them, so there are no 10-20 labels. And the reference electrode, which is
 digitized but is not a recorded data channel, is **omitted**; it sits on the anterior
 midline ringed by electrodes 5, 11, 36 and 41.
@@ -53,7 +53,7 @@ past the head rim (7) are in line with the vendor caps.
 ## Brain Products / EasyCap — `brainvision/`
 
 `.bvef` (XML, spherical theta/phi on a unit sphere). **103 files, the complete
-Brain Products catalogue**: actiCAP (AC/AP/AS/ASG/ASP/CACS/CMA/CLA/CLACS),
+Brain Products catalog**: actiCAP (AC/AP/AS/ASG/ASP/CACS/CMA/CLA/CLACS),
 BrainCap (BC) including MR/MR3/MEG/TMS/Sleep, LiveCap (LC), R-Net (RNP), and
 Xpress Twist. 13 to 256 channels.
 
@@ -124,7 +124,7 @@ Direct: `https://www.egi.com/images/kb/Sensor_Position_.sfp_files/GS_3_.sfp/Adul
 Retrieved 2026-07-16. Freely downloadable, no login. No explicit license stated.
 
 These are *average head* coordinates, not idealized spheres, so their electrodes
-sit ~12–14% off the best-fit sphere centre of the electrode set. That is normal
+sit ~12–14% off the best-fit sphere center of the electrode set. That is normal
 and `read_montage` is calibrated to accept it.
 
 ## ANT Neuro — not present

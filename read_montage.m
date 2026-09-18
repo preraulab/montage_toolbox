@@ -20,7 +20,7 @@ function eloc = read_montage(filename, varargin)
 %       'center'   : char - 'origin' projects about the file's own origin,
 %                    which is correct for an idealized cap defined on a sphere.
 %                    'fit' least-squares fits a sphere to the electrodes and
-%                    projects about that centre, which is what a subject
+%                    projects about that center, which is what a subject
 %                    digitization needs (default: 'origin')
 %       'validate' : logical - sanity-check the montage against 10-20 landmarks
 %                    and error if it is implausible (default: true)
@@ -43,7 +43,7 @@ function eloc = read_montage(filename, varargin)
 %
 %       'center' is the knob for the distortion that motivated this function.
 %       radius = 0.5 - elevation/pi measures elevation from the coordinate
-%       origin, so it is only meaningful when the origin IS the head centre.
+%       origin, so it is only meaningful when the origin IS the head center.
 %       Canonical vendor caps are defined on a sphere about the origin, so
 %       'origin' is right for them. Digitized montages are not, and want 'fit'.
 %
@@ -159,17 +159,17 @@ end
 %                        PROJECTION
 %************************************************************
 
-% Fit the sphere regardless of the centring mode: under 'fit' it defines the
+% Fit the sphere regardless of the centering mode: under 'fit' it defines the
 % projection, and under 'origin' it is still the diagnostic that says whether
 % trusting the origin was reasonable.
-[c, R_fit] = fit_sphere_centre(xyz);
+[c, R_fit] = fit_sphere_center(xyz);
 
 if strcmpi(p.Results.center, 'fit')
     xyz = xyz - c;
     xyz_orient = xyz_orient - c;   % keep the landmark frame in step with the electrodes
-    centre_offset = 0;
+    center_offset = 0;
 else
-    centre_offset = norm(c) / R_fit;
+    center_offset = norm(c) / R_fit;
 end
 
 eloc = xyz_to_eloc(labels, xyz);
@@ -177,7 +177,7 @@ eloc = xyz_to_eloc(labels, xyz);
 if do_validate
     % Direction checking uses the landmark set (electrodes + fiducials), since a
     % geodesic net's only orientation evidence lives in its fiducials.
-    validate_montage(eloc, xyz_orient, labels_orient, centre_offset, filename);
+    validate_montage(eloc, xyz_orient, labels_orient, center_offset, filename);
 end
 
 end
@@ -548,21 +548,21 @@ end
 %************************************************************
 %                  FIT A SPHERE TO THE CAP
 %************************************************************
-function [c, R] = fit_sphere_centre(xyz)
-%FIT_SPHERE_CENTRE  Least-squares sphere centre for a set of electrodes
+function [c, R] = fit_sphere_center(xyz)
+%FIT_SPHERE_CENTER  Least-squares sphere center for a set of electrodes
 %
 %   Inputs:
 %       xyz : Cx3 double - electrode coordinates -- required
 %
 %   Outputs:
-%       c : 1x3 double - fitted sphere centre
+%       c : 1x3 double - fitted sphere center
 %       R : double - fitted sphere radius
 
 % Algebraic (Kasa) fit: |p-c|^2 = R^2 expands to a linear system in (c, R^2-|c|^2),
 % which avoids an iterative solve. Good enough here -- the electrodes cover most
 % of a hemisphere, which is the regime where this fit is well conditioned.
 assert(size(xyz,1) >= 4, 'read_montage:tooFewForFit', ...
-    'Need at least 4 electrodes to fit a sphere centre (%d given).', size(xyz,1));
+    'Need at least 4 electrodes to fit a sphere center (%d given).', size(xyz,1));
 
 A = [2*xyz, ones(size(xyz,1),1)];
 b = sum(xyz.^2, 2);
@@ -575,7 +575,7 @@ end
 %************************************************************
 %                   SANITY-CHECK THE RESULT
 %************************************************************
-function validate_montage(eloc, xyz_lm, labels_lm, centre_offset, filename)
+function validate_montage(eloc, xyz_lm, labels_lm, center_offset, filename)
 %VALIDATE_MONTAGE  Error if the projected montage contradicts 10-20 anatomy
 %
 %   Inputs:
@@ -583,7 +583,7 @@ function validate_montage(eloc, xyz_lm, labels_lm, centre_offset, filename)
 %       xyz_lm        : Mx3 double - ALS coordinates of the LANDMARK set
 %                       (electrodes plus fiducials) -- required
 %       labels_lm     : Mx1 cell - labels of the landmark set -- required
-%       centre_offset : double - fitted sphere centre distance from the
+%       center_offset : double - fitted sphere center distance from the
 %                       projection origin, as a fraction of the fitted radius
 %                       -- required
 %       filename      : char - source file, for error messages -- required
@@ -619,17 +619,17 @@ if any(radius > 1)
     bad = find(radius > 1);
     error('read_montage:implausibleRadius', ...
         ['%s: %d electrode(s) project past radius 1.0 (max %.2f, e.g. ''%s''). ' ...
-         'The axis convention or the sphere centre is probably wrong.'], ...
+         'The axis convention or the sphere center is probably wrong.'], ...
         filename, numel(bad), max(radius), labels{bad(1)});
 end
 
-% Cz, if present, pins the vertex. If it is not near the centre the projection
+% Cz, if present, pins the vertex. If it is not near the center the projection
 % is off regardless of what everything else does.
 idx_cz = find_label(labels, {'Cz'});
 if ~isempty(idx_cz) && radius(idx_cz) > 0.2
-    error('read_montage:czOffCentre', ...
+    error('read_montage:czOffCenter', ...
         ['%s: Cz projects to radius %.3f, but it should sit near the vertex ' ...
-         '(radius ~0). The sphere centre is probably wrong -- try ''center'',''fit''.'], ...
+         '(radius ~0). The sphere center is probably wrong -- try ''center'',''fit''.'], ...
         filename, radius(idx_cz));
 end
 
@@ -662,18 +662,18 @@ if ~isempty(ra)
         repmat(', ...', 1, size(pairs,1) > shown));
 end
 
-% --- Off-centre coordinates ------------------------------------------
+% --- Off-center coordinates ------------------------------------------
 % The decisive test for the distortion this function exists to prevent. An
 % offset along z shrinks every electrode's radius by the SAME amount, so the cap
 % stays perfectly circular and merely clusters inward -- no aspect-ratio or
-% per-landmark radius check can see it. Comparing the fitted sphere centre to
+% per-landmark radius check can see it. Comparing the fitted sphere center to
 % the projection origin catches it directly, and works even for a cap with no
 % recognizable 10-20 labels. 5% is well below the level that is visible in a
 % plot but well above the noise of a real digitization.
 % Threshold calibrated against real vendor files rather than an idealized cap.
 % Genuine EGI HydroCel nets sit 12-14% off the electrode set's best-fit sphere
-% centre and are perfectly good -- their origin is the fiducial-defined head
-% centre, and the net's coverage extends asymmetrically down over the face,
+% center and are perfectly good -- their origin is the fiducial-defined head
+% center, and the net's coverage extends asymmetrically down over the face,
 % which drags a sphere fit. The old picture-digitized eloc64 starburst (since
 % removed from the repo) sat at 50%. 25% separates them with room to spare.
 %
@@ -681,17 +681,17 @@ end
 % residual cannot discriminate -- a legitimate EGI 256 net scores 8.1% and that
 % same junk starburst scored 8.5%. A check that cannot tell good from bad is worse
 % than no check, because people learn to ignore it.
-if centre_offset > 0.25
-    warning('read_montage:offCentre', ...
-        ['%s: electrodes are not centred on the projection origin -- the ' ...
-         'best-fit sphere centre is %.1f%% of its radius away. Projecting about ' ...
+if center_offset > 0.25
+    warning('read_montage:offCenter', ...
+        ['%s: electrodes are not centered on the projection origin -- the ' ...
+         'best-fit sphere center is %.1f%% of its radius away. Projecting about ' ...
          'the origin distorts the layout (electrodes clustered inward, or ' ...
          'squashed along one axis). Try ''center'',''fit'', and check the result: ' ...
          'if the layout is still not circular, the coordinates themselves are suspect.'], ...
-        filename, 100*centre_offset);
+        filename, 100*center_offset);
 end
 
-% A cap much wider than it is tall is the other signature of an off-centre
+% A cap much wider than it is tall is the other signature of an off-center
 % projection -- specifically an offset in x or y rather than z.
 ex = radius(:) .* sin([eloc.theta]'*pi/180);
 ey = radius(:) .* cos([eloc.theta]'*pi/180);
@@ -703,7 +703,7 @@ if span_x > 0 && span_y > 0
         warning('read_montage:anisotropic', ...
             ['%s: projected cap is %.2f:1 anisotropic (x span %.2f, y span %.2f). ' ...
              'A canonical cap should be close to circular -- real vendor nets ' ...
-             'run about 1.1-1.2:1. See any offCentre warning above for the ' ...
+             'run about 1.1-1.2:1. See any offCenter warning above for the ' ...
              'likely cause.'], ...
             filename, aspect, span_x, span_y);
     end

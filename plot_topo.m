@@ -44,7 +44,7 @@ function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
 %                      spacing and masks to it, 'box' places four far corner
 %                      points (default: 'head')
 %       'border'     : char or double - value given to the synthetic points.
-%                      'mean' gives each the average of its neighbouring
+%                      'mean' gives each the average of its neighboring
 %                      electrodes; a number pins them all to that value
 %                      (default: 'mean')
 %       'update'     : image handle - a map returned earlier as hmap. Repaints it
@@ -59,7 +59,7 @@ function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
 %                      not touch the interpolation, so values inside the cap
 %                      are unchanged. Pass 0.5 to confine the map to the head
 %                      rim the way this function did before it was matched to
-%                      MNE. [] leaves MNE's behaviour alone (default: [])
+%                      MNE. [] leaves MNE's behavior alone (default: [])
 %       'shading'    : char - 'interp' or 'flat' (default: 'interp')
 %       'conv'       : char - kept for backwards compatibility. 'on' is a
 %                      synonym for 'extrapolate','local' (default: 'off')
@@ -628,14 +628,14 @@ end
 %                   DELAUNAY ADJACENCY LIST
 %************************************************************
 function adj = delaunay_adjacency(DT, n_pts)
-%DELAUNAY_ADJACENCY  Neighbour list for every point of a triangulation
+%DELAUNAY_ADJACENCY  Neighbor list for every point of a triangulation
 %
 %   Inputs:
 %       DT    : delaunayTriangulation - the triangulation -- required
 %       n_pts : integer - number of points in it -- required
 %
 %   Outputs:
-%       adj : n_ptsx1 cell - indices of each point's Delaunay neighbours
+%       adj : n_ptsx1 cell - indices of each point's Delaunay neighbors
 
 E = edges(DT);
 adj = cell(n_pts, 1);
@@ -772,7 +772,7 @@ if ~ischar(S.border)
     return
 end
 
-% border == 'mean', using the cached real-electrode neighbour lists
+% border == 'mean', using the cached real-electrode neighbor lists
 v_extra = zeros(S.n_extra, 1);
 used    = false(S.n_extra, 1);
 for ii = 1:S.n_extra
@@ -880,7 +880,7 @@ if size(pos, 1) >= 4
     end
 end
 
-% Collinear, or too few electrodes to triangulate: median nearest-neighbour spacing
+% Collinear, or too few electrodes to triangulate: median nearest-neighbor spacing
 D = hypot(pos(:,1) - pos(:,1)', pos(:,2) - pos(:,2)');
 D(1:size(D,1)+1:end) = inf;
 d = median(min(D, [], 2));

@@ -21,7 +21,7 @@ function [eloc, dig] = fif_to_eloc(filename, varargin)
 %       'center'    : 1x3 double - subtract this from every point before
 %                     projecting. [] uses the file's own origin, which for
 %                     Neuromag head coordinates is already the correct head
-%                     centre -- see Notes (default: [])
+%                     center -- see Notes (default: [])
 %
 %   Outputs:
 %       eloc : 1xC struct - channel locations ready for plot_topo
@@ -34,14 +34,14 @@ function [eloc, dig] = fif_to_eloc(filename, varargin)
 %       Python. FIF is big-endian, and every tag is a 16-byte header -- kind,
 %       type, size, next -- followed by size bytes of payload. Digitizer
 %       points are FIFF_DIG_POINT (kind 213) with a 20-byte payload holding
-%       int32 kind, int32 ident and three float32 coordinates in metres.
+%       int32 kind, int32 ident and three float32 coordinates in meters.
 %
 %       Coordinate convention. Neuromag/MNE head coordinates are RAS: +x
 %       toward the right preauricular point, +y toward the nasion, +z up. The
 %       origin is the midpoint of the left/right preauricular points, so all
 %       three fiducials lie in the z = 0 plane with LPA and RPA on the y axis.
 %       That origin IS the interaural midpoint, which is the anatomically
-%       right centre for the azimuthal projection -- so no re-centring is
+%       right center for the azimuthal projection -- so no re-centering is
 %       needed and 'center' should normally be left empty. A least-squares
 %       sphere fit is a poor substitute: an EEG cap covers the top of the head
 %       rather than a sphere, so the fit is biased upward and pushes far more
@@ -149,7 +149,7 @@ function raw = read_dig_tags(filename)
 %       filename : char - path to the .fif file -- required
 %
 %   Outputs:
-%       raw : Nx5 double - one row per point, [kind ident x y z], metres
+%       raw : Nx5 double - one row per point, [kind ident x y z], meters
 %
 %   Notes:
 %       Walks the file sequentially rather than following the tag 'next'

@@ -39,7 +39,7 @@ eloc = cap_montage('AC-64');        % actiCAP 64
 eloc = cap_montage('BC-SL-64');     % BrainCap Sleep 64
 ```
 
-**110 montages, 6–257 channels** — the full Brain Products catalogue (actiCAP, BrainCap, BrainCap Sleep/MR/MEG/TMS, LiveCap, R-Net, Xpress Twist), the EGI HydroCel nets, and one lab-measured cap (`NSS-64`). All 110 load, and Cz lands at radius 0.000 in all 106 that have it.
+**110 montages, 6–257 channels** — the full Brain Products catalog (actiCAP, BrainCap, BrainCap Sleep/MR/MEG/TMS, LiveCap, R-Net, Xpress Twist), the EGI HydroCel nets, and one lab-measured cap (`NSS-64`). All 110 load, and Cz lands at radius 0.000 in all 106 that have it.
 
 Names are the vendors' product codes: `AC-64` is actiCAP 64, `BC-SL-64` is BrainCap Sleep 64, and a `_REF` / `_NO_REF` suffix marks variants with and without the reference electrode. Lookup is case-insensitive; an unknown name suggests near misses (`AC64` → *did you mean AC-64, AP-64, BC-64?*) and a partial name matching several lists them.
 
@@ -56,7 +56,7 @@ Deduplication keys on the channel list **and** the coordinates, and both halves 
 `NSS-64` is not a vendor product. It is the mean electrode position of 21 Polhemus
 digitizations from 11 subjects (averaged within subject first, so the 10 two-night
 subjects are not counted twice), for the 64-channel cap used in the NSS study. Its
-electrodes are labelled `1`..`64` to match the recording channel order rather than with
+electrodes are labeled `1`..`64` to match the recording channel order rather than with
 10-20 names, because the cap numbers its holders.
 
 Unlike the vendor files it **is** committed, since it is our own measurement and carries
@@ -107,7 +107,7 @@ six  = eloc(ismember({eloc.labels}, {'F3','F4','C3','C4','O1','O2'}));
 
 ### Migrating off the old `eloc*.mat` built-ins
 
-The legacy `eloc6.mat`, `eloc64.mat`, `eloc64_2d.mat` and `eloc_10_20.mat` files have been **removed**. They were digitized off pictures, their channels were numbered rather than named, and their geometry did not describe a head — `eloc64` in particular was a radial starburst whose electrode radii varied 30-fold and whose best-fit sphere centre sat 50% of a radius off the origin. Every channel count they covered is now served by a real vendor layout from the library.
+The legacy `eloc6.mat`, `eloc64.mat`, `eloc64_2d.mat` and `eloc_10_20.mat` files have been **removed**. They were digitized off pictures, their channels were numbered rather than named, and their geometry did not describe a head — `eloc64` in particular was a radial starburst whose electrode radii varied 30-fold and whose best-fit sphere center sat 50% of a radius off the origin. Every channel count they covered is now served by a real vendor layout from the library.
 
 **The caveat that matters for old data:** those montages numbered their channels rather than naming them, so nothing recorded which physical electrode channel *k* was. The 64-channel default is now `AC-64`, which assumes the data's channel order matches actiCAP's (Fp1, Fp2, F7, F3, Fz, ...). For data that really came from a BrainVision 64 that is right; for anything else it silently mislabels channels. Verify the order against the recording header, and if the data is not a BrainVision 64, pass an explicit `eloc` from `read_montage` or `cap_montage`.
 ## Scalp rendering — `plot_topo.m`
@@ -142,7 +142,7 @@ The scalp map reproduces MNE-Python's `plot_topomap` rather than EEGLAB's `topop
 | clip radius | `max(rim, 1.01 × outermost)` | `max(rim, 1.01 × outermost)` | `max(rim, 1.02 × outermost)` |
 | grid | 200 | 64 | 67 |
 
-MNE never lets the interpolant extrapolate. It rings the electrodes with synthetic points well outside the painted disc, gives each one the mean of its neighbouring electrodes (`'border','mean'`), and interpolates inside that ring — so every visible pixel is interpolated, not extrapolated. `plot_topo` does the same.
+MNE never lets the interpolant extrapolate. It rings the electrodes with synthetic points well outside the painted disc, gives each one the mean of its neighboring electrodes (`'border','mean'`), and interpolates inside that ring — so every visible pixel is interpolated, not extrapolated. `plot_topo` does the same.
 
 `'interp','cubic'` is a port of scipy's `CloughTocher2DInterpolator`, **not** `griddata`'s own `'cubic'`. MATLAB's is a different triangulation-based cubic scheme and lands several percent of the data range away from what MNE draws. Validated against scipy directly: identical to machine precision (~4e-15) on a generic point set, and on a real 64-channel montage the finished map agrees with MNE's to a maximum of 0.19% of the data range inside the head rim (rms 0.03%, r = 0.999999). The residual comes from the synthetic ring being exactly cocircular, a degenerate Delaunay configuration that MATLAB and Qhull break differently; it is confined to the skirt annulus outside the outermost electrodes.
 
