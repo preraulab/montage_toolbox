@@ -13,3 +13,9 @@
 *.xls
 *.xlsx
 *.zip
+
+# Lab-measured montages ARE committed. These are our own digitizations, not a
+# vendor's product, so the redistribution problem above does not apply to them
+# -- and if they were ignored, rebuilding the library from a fresh clone would
+# silently drop them.
+!prerau/*.bvef

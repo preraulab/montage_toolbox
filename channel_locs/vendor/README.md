@@ -16,6 +16,40 @@ redistribution: the EGI files are freely downloadable but carry no license
 grant, and the Brain Products files sit behind a customer login. This repo is
 public and BSD-3, so the files stay local. Fetch your own copies as below.
 
+## Prerau Lab — `prerau/`
+
+Montages measured here rather than published by a vendor. **These are committed**
+— they are our own data, so the redistribution problem above does not apply, and
+`.gitignore` in this directory re-includes `prerau/*.bvef`. Without that
+re-inclusion, rebuilding the library from a fresh clone would silently drop them.
+
+| File | Channels | Notes |
+|---|---|---|
+| `NSS-64.bvef` | 64 | Cohort-average positions for the NSS 64-channel cap |
+
+`NSS-64` is the mean of 21 Polhemus digitizations from 11 subjects, averaged within
+subject first so the 10 two-night subjects do not count twice, and built by
+`fif_to_eloc`/`nss_fif_to_eloc` from the raw `.fif` files. Coordinates are Neuromag
+head coordinates: the origin is where the nasion projects onto the line joining the
+preauricular points.
+
+Two conventions of this cap are worth stating, because neither is guessable from the
+file. Electrodes are labelled `1`..`64` — the cap numbers its holders rather than
+naming them, so there are no 10-20 labels. And the reference electrode, which is
+digitized but is not a recorded data channel, is **omitted**; it sits on the anterior
+midline ringed by electrodes 5, 11, 36 and 41.
+
+The file carries `Nz`/`LPA`/`RPA` so `read_montage` can infer the axis convention.
+They are needed: with numeric labels there is not a single 10-20 name to orient from,
+and `read_montage` errors rather than guess. They are dropped before projection and
+never become channels.
+
+`read_montage` warns that the projected cap is 1.53:1 anisotropic, against the 1.1-1.2:1
+it expects of a vendor net. That is the cap and not the averaging — individual sessions
+measure 1.45-1.62 — and it comes from the cap reaching only +0.33 anteriorly where an
+actiCAP 64 reaches +0.48. Maximum electrode radius (0.64) and the number of electrodes
+past the head rim (7) are in line with the vendor caps.
+
 ## Brain Products / EasyCap — `brainvision/`
 
 `.bvef` (XML, spherical theta/phi on a unit sphere). **103 files, the complete

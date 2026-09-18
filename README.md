@@ -1,7 +1,7 @@
 # montage_toolbox
 
 EEG electrode montages and scalp topography rendering for MATLAB. Reads vendor
-electrode files into EEGLAB-style `eloc` structs, ships a compiled library of 109 caps,
+electrode files into EEGLAB-style `eloc` structs, ships a compiled library of 110 caps,
 and renders head models and interpolated scalp maps that match MNE-Python's
 `plot_topomap`.
 
@@ -39,17 +39,40 @@ eloc = cap_montage('AC-64');        % actiCAP 64
 eloc = cap_montage('BC-SL-64');     % BrainCap Sleep 64
 ```
 
-**109 montages, 6–257 channels** — the full Brain Products catalogue (actiCAP, BrainCap, BrainCap Sleep/MR/MEG/TMS, LiveCap, R-Net, Xpress Twist) plus the EGI HydroCel nets. All 109 load clean, and Cz lands at radius 0.000 in all 106 that have it.
+**110 montages, 6–257 channels** — the full Brain Products catalogue (actiCAP, BrainCap, BrainCap Sleep/MR/MEG/TMS, LiveCap, R-Net, Xpress Twist), the EGI HydroCel nets, and one lab-measured cap (`NSS-64`). All 110 load, and Cz lands at radius 0.000 in all 106 that have it.
 
 Names are the vendors' product codes: `AC-64` is actiCAP 64, `BC-SL-64` is BrainCap Sleep 64, and a `_REF` / `_NO_REF` suffix marks variants with and without the reference electrode. Lookup is case-insensitive; an unknown name suggests near misses (`AC64` → *did you mean AC-64, AP-64, BC-64?*) and a partial name matching several lists them.
 
 ### How it's stored
 
-Everything lives in `channel_locs/montage_library.mat` — **77 KB**, built from the vendors' own files by `build_montage_library`. The raw files (1.2 MB of XML) are **not needed at run time and not distributed**; the library is self-contained and verified to reproduce `read_montage` bit-exactly for all 109 montages.
+Everything lives in `channel_locs/montage_library.mat` — **80 KB**, built from the vendors' own files by `build_montage_library`. The raw files (1.2 MB of XML) are **not needed at run time and not distributed**; the library is self-contained and verified to reproduce `read_montage` bit-exactly for all 110 montages.
 
-The store is deduplicated: **109 names → 65 distinct layouts**, since vendors ship one arrangement under many product codes (eleven 32-channel codes are the same layout). Each distinct layout is stored once as an ordered label list plus unit-sphere coordinates; `theta`/`radius` and the spherical fields are derived on load by `xyz_to_eloc`, so the library cannot drift from the projection `read_montage` uses.
+The store is deduplicated: **110 names → 68 distinct layouts**, since vendors ship one arrangement under many product codes (eleven 32-channel codes are the same layout). Each distinct layout is stored once as an ordered label list plus unit-sphere coordinates; `theta`/`radius` and the spherical fields are derived on load by `xyz_to_eloc`, so the library cannot drift from the projection `read_montage` uses.
 
 Deduplication keys on the channel list **and** the coordinates, and both halves matter. Order matters because `eloc(k)` must line up with the data's channel *k*. Geometry matters because an identical channel list is not always the same cap — `AP-32` and `AS-32_NO_REF` list the same channels in the same order yet place `FC5` 1.5e-02 apart. For the same reason positions are not factored into a shared name→position table, tempting as that is: 19 scalp names (`FC5`, `FCz`, the `F11`/`FT11`/`TP11` series) genuinely sit in different places on different cap families, and `FC5` alone has three distinct positions across 90 caps.
+
+### Lab-measured montages
+
+`NSS-64` is not a vendor product. It is the mean electrode position of 21 Polhemus
+digitizations from 11 subjects (averaged within subject first, so the 10 two-night
+subjects are not counted twice), for the 64-channel cap used in the NSS study. Its
+electrodes are labelled `1`..`64` to match the recording channel order rather than with
+10-20 names, because the cap numbers its holders.
+
+Unlike the vendor files it **is** committed, since it is our own measurement and carries
+no redistribution problem. It lives in `channel_locs/vendor/prerau/`, which the vendor
+`.gitignore` explicitly re-includes.
+
+```matlab
+eloc = cap_montage('NSS-64');
+```
+
+Two things to know before using it. Its projected outline is 1.53:1 wider than it is
+long, against 1.2:1 for a vendor 64-channel cap, so `read_montage` warns about
+anisotropy on the raw file; that is the cap, not the averaging, and every individual
+session measures 1.45-1.62. And subjects' electrodes sit a median 5.9 degrees from the
+cohort mean (worst 18.9), which is the error you accept by using the average instead of
+a subject's own digitization — `fif_to_eloc` will read that per subject.
 
 To add caps: drop vendor files into `channel_locs/vendor/` (see its README) and re-run `build_montage_library`.
 
@@ -61,7 +84,7 @@ eloc = read_montage('/path/to/my_cap.bvef');   % .bvef / .sfp / .elc
 
 ### Non-scalp channels are stacked — exclude them from maps
 
-**25 of the 109 montages contain electrodes at identical positions**, including *every* sleep cap. Vendors give non-scalp channels a placeholder angle rather than a real position: on a BrainVision sleep cap, `EMG1`, `EMG2`, `EMG3` and `ECG` all sit exactly on top of `Fpz`; several BrainCaps stack `IO` or `ECG` there too.
+**25 of the 110 montages contain electrodes at identical positions**, including *every* sleep cap. Vendors give non-scalp channels a placeholder angle rather than a real position: on a BrainVision sleep cap, `EMG1`, `EMG2`, `EMG3` and `ECG` all sit exactly on top of `Fpz`; several BrainCaps stack `IO` or `ECG` there too.
 
 They are deliberately **not** dropped — they are recorded channels, so removing them would break the correspondence between `eloc(k)` and the data's channel *k*. `read_montage` warns (`read_montage:coincidentElectrodes`) instead.
 
@@ -214,7 +237,7 @@ copy. File history is preserved from `channelbrowse`.
 - `default_montage.m` — montage from a channel count
 - `xyz_to_eloc.m` — cartesian triple to full `eloc`
 - `build_montage_library.m` — recompile the library from raw vendor files
-- `channel_locs/montage_library.mat` — the compiled store (77 KB, 109 caps)
+- `channel_locs/montage_library.mat` — the compiled store (80 KB, 110 caps)
 - `channel_locs/vendor/` — where raw vendor files go; see its README
 
 ## License
