@@ -11,6 +11,7 @@ and renders head models and interpolated scalp maps that match MNE-Python's
 eloc = cap_montage('AC-64');                    % actiCAP 64 from the library
 plot_topo(values, eloc, 'style', 'map');        % interpolated scalp map
 [~, ex, ey] = plot_topo([], eloc);              % head + electrodes, screen coords out
+[~, ex, ey, cache, Zi, gx] = plot_topo(values, eloc, 'noplot', true);   % the grid itself, nothing drawn
 ```
 
 ## Entry points

@@ -1,4 +1,4 @@
-function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
+function [hax, ex, ey, hmap, Zi, gx] = plot_topo(values, eloc, varargin)
 %PLOT_TOPO  Plot electrode locations (and optional scalp map) on a head model
 %
 %   Usage:
@@ -6,6 +6,8 @@ function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
 %       [hax, ex, ey] = plot_topo([], eloc, 'electrodes', 'ptslabels')
 %       [hax, ex, ey, hmap] = plot_topo(values, eloc, 'style', 'map')
 %       plot_topo(newvalues, [], 'update', hmap)   % fast redraw, same montage
+%       [~, ex, ey, cache, Zi, gx] = plot_topo(values, eloc, 'noplot', true)   % grid only, nothing drawn
+%       [~, ~, ~, cache, Zi] = plot_topo(newvalues, [], 'update', cache)      % next grid, same montage
 %
 %   Inputs:
 %       values : Cx1 double - one value per channel to render as an
@@ -47,11 +49,18 @@ function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
 %                      'mean' gives each the average of its neighboring
 %                      electrodes; a number pins them all to that value
 %                      (default: 'mean')
-%       'update'     : image handle - a map returned earlier as hmap. Repaints it
-%                      from new values, reusing the cached geometry, and returns
-%                      immediately. eloc may be [] and every other option is
-%                      ignored, since they are fixed by the original call
-%                      (default: [])
+%       'update'     : image handle or struct - a map returned earlier as hmap.
+%                      Repaints it from new values, reusing the cached geometry,
+%                      and returns immediately. With the cache struct that a
+%                      'noplot' call returns as hmap, nothing is drawn and the
+%                      new grid comes back in Zi. eloc may be [] and every other
+%                      option is ignored, since they are fixed by the original
+%                      call (default: [])
+%       'noplot'     : logical - compute the scalp map and return it in Zi
+%                      without creating any graphics. hax is [] and hmap is the
+%                      interpolation cache, to pass back as 'update' for further
+%                      maps on the same montage. With empty values only the
+%                      electrode positions ex, ey are returned (default: false)
 %       'cliprad'    : double - hard radius cap on the painted map, applied on
 %                      top of whatever mask 'extrapolate' produces. This is a
 %                      deliberate departure from MNE, which has no such mode:
@@ -71,12 +80,19 @@ function [hax, ex, ey, hmap] = plot_topo(values, eloc, varargin)
 %       'parent'     : axes handle - axes to draw into (default: gca)
 %
 %   Outputs:
-%       hax  : axes handle - the axes drawn into
+%       hax  : axes handle - the axes drawn into ([] with 'noplot')
 %       ex   : Cx1 double - electrode screen x coordinates, in channel order
 %       ey   : Cx1 double - electrode screen y coordinates, in channel order
-%       hmap : image handle - the scalp map object, or [] when no map was drawn.
-%              Pass it back as 'update' to repaint with new values; the
-%              interpolation geometry is cached on it.
+%       hmap : image handle or struct - the scalp map object, or [] when no map
+%              was drawn. Pass it back as 'update' to repaint with new values;
+%              the interpolation geometry is cached on it. With 'noplot' it is
+%              that cache itself, a struct, which 'update' accepts the same way.
+%       Zi   : gridres x gridres double - the interpolated map, NaN outside the
+%              painted area, or [] when no map was computed. Image orientation:
+%              Zi(i, j) is the value at y = gx(i), x = gx(j), so rows run along
+%              y and columns along x. Transpose for an x-first array.
+%       gx   : 1 x gridres double - grid coordinates, the same along x and y,
+%              in the units of ex and ey (head rim at radius 0.5)
 %
 %   Notes:
 %       This is a self-contained replacement for EEGLAB's topoplot family.
@@ -166,22 +182,35 @@ addParameter(p, 'shading',    'interp',@(x) any(validatestring(x, {'interp','fla
 addParameter(p, 'conv',       'off',   @(x) any(validatestring(x, {'on','off'})));
 addParameter(p, 'emarker',    {'.','k',[],1}, @(x) validateattributes(x, {'cell'}, {'vector'}));
 addParameter(p, 'headcolor',  [0 0 0], @(x) validateattributes(x, {'numeric'}, {'vector','numel',3,'>=',0,'<=',1}));
-addParameter(p, 'update',     [],      @(x) isempty(x) || isgraphics(x, 'image'));
+% 'update' takes the image handle of a drawn map, or the cache struct a 'noplot' call
+% returned: "empty, or a graphics handle, or a struct" is a disjunction across types.
+addParameter(p, 'update',     [],      @(x) isempty(x) || isgraphics(x, 'image') || ...
+                                            (isstruct(x) && isfield(x, 'num_chans')));
+addParameter(p, 'noplot',     false,   @(x) validateattributes(x, {'logical','numeric'}, {'scalar'}));
 addParameter(p, 'parent',     [],      @(x) isempty(x) || isgraphics(x, 'axes'));
 parse(p, values, eloc, varargin{:});
+
+Zi = [];
+gx = [];
 
 %************************************************************
 %                      FAST UPDATE PATH
 %************************************************************
 
 % Everything below this block is setup that an update does not need: the geometry is
-% already cached on the map handle, and the head, markers and axes are already drawn.
+% already cached (on the map handle, or in the struct itself), and for a drawn map the
+% head, markers and axes are already there.
 hmap = p.Results.update;
 if ~isempty(hmap)
-    S = getappdata(hmap, 'plot_topo_cache');
-    assert(~isempty(S), 'plot_topo:noCache', ...
-        ['That image carries no interpolation cache. ''update'' takes the hmap output ' ...
-         'of an earlier plot_topo call, not an arbitrary image handle.']);
+    is_drawn = isgraphics(hmap, 'image');
+    if is_drawn
+        S = getappdata(hmap, 'plot_topo_cache');
+        assert(~isempty(S), 'plot_topo:noCache', ...
+            ['That image carries no interpolation cache. ''update'' takes the hmap output ' ...
+             'of an earlier plot_topo call, not an arbitrary image handle.']);
+    else
+        S = hmap;
+    end
 
     vals = double(p.Results.values(:));
     assert(numel(vals) == S.num_chans, 'plot_topo:sizeMismatch', ...
@@ -192,10 +221,15 @@ if ~isempty(hmap)
          'triangulation no longer applies. Call plot_topo without ''update'' to rebuild.']);
 
     [Zi, S] = topo_evaluate(S, vals);
-    setappdata(hmap, 'plot_topo_cache', S);
-    set(hmap, 'CData', Zi);
-
-    hax = ancestor(hmap, 'axes');
+    gx = S.gx;
+    if is_drawn
+        setappdata(hmap, 'plot_topo_cache', S);
+        set(hmap, 'CData', Zi);
+        hax = ancestor(hmap, 'axes');
+    else
+        hmap = S;                       % the struct carries the warm-started gradients forward
+        hax  = [];
+    end
     ex  = S.ex;
     ey  = S.ey;
     if nargout == 0
@@ -247,10 +281,12 @@ if isempty(style)
     end
 end
 draw_map = strcmpi(style, 'map') && ~isempty(values);
+noplot   = logical(p.Results.noplot);
 hmap = [];
 
+% No axes are touched or created in 'noplot' mode
 hax = p.Results.parent;
-if isempty(hax)
+if isempty(hax) && ~noplot
     hax = gca;
 end
 
@@ -284,9 +320,7 @@ max_rad = max(hypot(ex, ey));
 %                    INTERPOLATED MAP
 %************************************************************
 
-set(hax, 'NextPlot', 'add');
-
-if draw_map
+if draw_map || (noplot && ~isempty(values))
     % NaN/Inf channels cannot participate in the interpolation, but they are still real
     % electrodes and are drawn as markers below.
     good = isfinite(values);
@@ -297,7 +331,22 @@ if draw_map
     % handle, so an 'update' call can skip straight to topo_evaluate.
     S = topo_cache(ex, ey, good, rmax, gridres, extrapolate, border, interp_fcn, cliprad);
     [Zi, S] = topo_evaluate(S, double(values));
+    gx = S.gx;
+end
 
+% 'noplot': the grid (if any) is computed, the geometry is handed back as hmap in
+% place of an image handle, and no graphics are created.
+if noplot
+    hax = [];
+    if ~isempty(values)
+        hmap = S;
+    end
+    return
+end
+
+set(hax, 'NextPlot', 'add');
+
+if draw_map
     % An image, not a surface: the grid is regular, so this is the right primitive and it
     % renders about 3x faster. AlphaData carries the mask, since an image has no NaN
     % transparency of its own.
