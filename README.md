@@ -83,19 +83,21 @@ To add caps: drop vendor files into `channel_locs/vendor/` (see its README) and 
 eloc = read_montage('/path/to/my_cap.bvef');   % .bvef / .sfp / .elc
 ```
 
-### Non-scalp channels are stacked — exclude them from maps
+### Non-scalp channels are stacked — plot_topo leaves them out
 
 **25 of the 110 montages contain electrodes at identical positions**, including *every* sleep cap. Vendors give non-scalp channels a placeholder angle rather than a real position: on a BrainVision sleep cap, `EMG1`, `EMG2`, `EMG3` and `ECG` all sit exactly on top of `Fpz`; several BrainCaps stack `IO` or `ECG` there too.
 
-They are deliberately **not** dropped — they are recorded channels, so removing them would break the correspondence between `eloc(k)` and the data's channel *k*. `read_montage` warns (`read_montage:coincidentElectrodes`) instead.
+They are deliberately **not** dropped from `eloc` — they are recorded channels, so removing them would break the correspondence between `eloc(k)` and the data's channel *k*. `read_montage` warns (`read_montage:coincidentElectrodes`) so you know the cap has them.
 
-This matters because it fails silently: interpolating a map over stacked points does not error, it averages several contradictory values at one location and returns a plausible-looking wrong answer. Drop them before mapping:
+`plot_topo` recognizes them by name and leaves them out of everything: a channel labeled `EOG`, `EMG`, `ECG` or `EKG` (with or without a leading `H`, `V`, `L` or `R` and a trailing number) or `IO` is not interpolated, not drawn, and not used to size the axes. Pass the full channel vector and the full `eloc`:
 
 ```matlab
 eloc = cap_montage('BC-SL-64');
-scalp = eloc(~ismember({eloc.labels}, {'EOG1','EOG2','EMG1','EMG2','EMG3','ECG'}));
-plot_topo(vals(1:numel(scalp)), scalp, 'style', 'map');
+plot_topo(vals, eloc, 'style', 'map');             % 62 values; EOG/EMG/ECG are skipped by name
+plot_topo(vals, eloc, 'nonscalp', {'Chin'});       % any other non-EEG channel, by label
 ```
+
+A channel that still shares a position with another after that stops `plot_topo` with an error naming both, rather than silently averaging two unrelated values at one point.
 
 Supported: `.sfp` (EGI geodesic nets), `.bvef` (BrainVision / EasyCap), `.elc` (ASA / ANT Neuro). Vendors disagree on axis order and units, so the loader resolves orientation *from the data* — it locates 10-20 landmarks and fiducials by label and picks the convention that puts them where anatomy says they go, rather than trusting an assumed axis order. Units are irrelevant (the projection depends only on angles). See `channel_locs/vendor/README.md` for where to obtain each vendor's files and why they are not committed.
 

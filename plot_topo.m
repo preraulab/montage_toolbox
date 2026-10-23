@@ -17,7 +17,9 @@ function [hax, ex, ey, hmap, Zi, gx] = plot_topo(values, eloc, varargin)
 %                either the polar pair (theta, radius) or the cartesian
 %                triple (X, Y, Z); polar is used when present. An optional
 %                'labels' field (char or numeric) is used by the label
-%                display modes -- required
+%                display modes and to recognize non-EEG channels (EOG, EMG,
+%                ECG, EKG, IO), which are left out of the map and not drawn,
+%                see Notes -- required
 %
 %   Name-Value Pairs:
 %       'style'      : char - 'map' draws the interpolated scalp map,
@@ -78,6 +80,8 @@ function [hax, ex, ey, hmap, Zi, gx] = plot_topo(values, eloc, varargin)
 %       'headcolor'  : 1x3 double - color of the head/nose/ear lines
 %                      (default: [0 0 0])
 %       'parent'     : axes handle - axes to draw into (default: gca)
+%       'nonscalp'   : cellstr - labels of further channels to leave out,
+%                      on top of the ones recognized by name (default: {})
 %
 %   Outputs:
 %       hax  : axes handle - the axes drawn into ([] with 'noplot')
@@ -128,8 +132,16 @@ function [hax, ex, ey, hmap, Zi, gx] = plot_topo(values, eloc, varargin)
 %       TP9/TP10 on a 64-channel cap sit at ~0.63 and are genuinely below the
 %       ears/eyes line. The axes are sized to keep them visible.
 %
-%       Channels whose values are NaN or Inf are dropped from the map
-%       interpolation but still drawn as electrodes.
+%       Non-EEG channels take no part in anything: a channel whose label is
+%       EOG, EMG, ECG or EKG (with or without a leading H, V, L or R and a
+%       trailing number: VEOG, EMG2, ...) or IO (infraorbital) is left out
+%       of the interpolation, not drawn, and ignored when sizing the axes
+%       and the clip circle. Vendors park such channels on a placeholder
+%       position, often on top of Fpz, so including them would average
+%       several unrelated values at one point. Their ex, ey are still
+%       returned, so channel k stays at index k. Any other channel can be
+%       left out with 'nonscalp'. Channels whose values are NaN or Inf are
+%       dropped from the map interpolation but still drawn as electrodes.
 %
 %   Example:
 %       eloc = cap_montage('AC-64');
@@ -188,6 +200,7 @@ addParameter(p, 'update',     [],      @(x) isempty(x) || isgraphics(x, 'image')
                                             (isstruct(x) && isfield(x, 'num_chans')));
 addParameter(p, 'noplot',     false,   @(x) validateattributes(x, {'logical','numeric'}, {'scalar'}));
 addParameter(p, 'parent',     [],      @(x) isempty(x) || isgraphics(x, 'axes'));
+addParameter(p, 'nonscalp',   {},      @(x) iscellstr(x) || isstring(x) || ischar(x));
 parse(p, values, eloc, varargin{:});
 
 Zi = [];
@@ -216,7 +229,7 @@ if ~isempty(hmap)
     assert(numel(vals) == S.num_chans, 'plot_topo:sizeMismatch', ...
         'values must have one entry per channel (%d channels, %d values).', ...
         S.num_chans, numel(vals));
-    assert(isequal(isfinite(vals), S.good), 'plot_topo:goodChanged', ...
+    assert(isequal(isfinite(vals) & S.scalp, S.good), 'plot_topo:goodChanged', ...
         ['Which channels are finite has changed since the map was drawn, so the cached ' ...
          'triangulation no longer applies. Call plot_topo without ''update'' to rebuild.']);
 
@@ -299,6 +312,7 @@ assert(~isempty(eloc), 'plot_topo:noEloc', ...
 
 [ex, ey, labels] = eloc_to_screen(eloc);
 num_chans = numel(ex);
+scalp = is_scalp(labels, cellstr(p.Results.nonscalp));   % the channels that take part
 
 assert(isempty(values) || numel(values) == num_chans, ...
     'plot_topo:sizeMismatch', ...
@@ -314,7 +328,7 @@ rmax = 0.5;
 % ring and the head outline, which is wrong: it is the below-equator electrodes
 % (FT9/TP9 on a 64 cap, at radius ~0.63) that belong OUTSIDE the head, in the
 % conventional "skirt". The axes below are sized to include that skirt.
-max_rad = max(hypot(ex, ey));
+max_rad = max(hypot(ex(scalp), ey(scalp)));
 
 %************************************************************
 %                    INTERPOLATED MAP
@@ -323,13 +337,25 @@ max_rad = max(hypot(ex, ey));
 if draw_map || (noplot && ~isempty(values))
     % NaN/Inf channels cannot participate in the interpolation, but they are still real
     % electrodes and are drawn as markers below.
-    good = isfinite(values);
+    good = isfinite(values(:)) & scalp;
     assert(sum(good) >= 3, 'plot_topo:tooFewValues', ...
-        'Need at least 3 finite values to interpolate a scalp map (%d given).', sum(good));
+        'Need at least 3 finite values on scalp channels to interpolate a map (%d given).', sum(good));
+
+    % Two channels at one position would average unrelated values there. The
+    % vendor placeholders are already out (non-EEG by label); whatever is left
+    % is named, so the caller knows what to pass as 'nonscalp' or set to NaN.
+    in_map = find(good);
+    [~, ~, which] = unique([ex(in_map), ey(in_map)], 'rows');
+    clash = accumarray(which, 1) > 1;                 % one flag per distinct position
+    assert(~any(clash), 'plot_topo:duplicatePositions', ...
+        ['Channels %s share one electrode position, so a map cannot be interpolated. ' ...
+         'Channels named EOG/EMG/ECG/EKG/IO are left out automatically; list the others ' ...
+         'in ''nonscalp'' or set their values to NaN.'], ...
+        strjoin(labels(in_map(clash(which))), ', '));
 
     % Everything that does not depend on the values is built once and kept on the map
     % handle, so an 'update' call can skip straight to topo_evaluate.
-    S = topo_cache(ex, ey, good, rmax, gridres, extrapolate, border, interp_fcn, cliprad);
+    S = topo_cache(ex, ey, good, scalp, rmax, gridres, extrapolate, border, interp_fcn, cliprad);
     [Zi, S] = topo_evaluate(S, double(values));
     gx = S.gx;
 end
@@ -380,19 +406,19 @@ end
 %                       ELECTRODES
 %************************************************************
 
-[marker, ecolor, msize, mwidth] = unpack_emarker(p.Results.emarker, num_chans);
+[marker, ecolor, msize, mwidth] = unpack_emarker(p.Results.emarker, sum(scalp));
 
 % Drawn after the map, so child order alone puts these on top; uistack below makes that
 % explicit rather than relying on it. This is what MNE expresses with zorder.
 if ~strcmp(elec_mode, 'off')
     if any(strcmp(elec_mode, {'pts','ptslabels'}))
-        plot(ex, ey, marker, ...
+        plot(ex(scalp), ey(scalp), marker, ...
             'Color', ecolor, 'MarkerSize', msize, 'LineWidth', mwidth, ...
             'LineStyle', 'none', 'Parent', hax);
     end
 
     if any(strcmp(elec_mode, {'labels','ptslabels'}))
-        for ii = 1:num_chans
+        for ii = find(scalp)'
             text(ex(ii), ey(ii), ['  ' labels{ii}], ...
                 'Parent', hax, 'FontSize', 9, 'Color', ecolor, ...
                 'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
@@ -489,15 +515,39 @@ end
 end
 
 %************************************************************
+%                    NON-EEG CHANNELS
+%************************************************************
+function scalp = is_scalp(labels, extra)
+%IS_SCALP  True for the channels whose label does not mark them as non-EEG
+%
+%   Inputs:
+%       labels : Cx1 cell - channel label strings -- required
+%       extra  : cellstr - further labels to treat as non-EEG -- required (may be empty)
+%
+%   Outputs:
+%       scalp : Cx1 logical - true where the channel takes part in the plot
+%
+%   The rule is by name because montages carry no channel type: EOG, EMG,
+%   ECG or EKG, with or without a leading H, V, L or R and a trailing
+%   number, and IO (infraorbital). The library's 110 montages use ECG,
+%   EMG1-3, EOG1-2, IO and VEOG, all of which this catches; a scalp label
+%   (Iz, O1, FC5, ...) never matches.
+
+non_eeg = '^(?:[HVLR]?(?:EOG|EMG|ECG|EKG)|IO)\d*$';
+scalp = cellfun(@isempty, regexpi(labels(:), non_eeg, 'once')) & ~ismember(lower(labels(:)), lower(extra));
+end
+
+%************************************************************
 %                  CACHED MAP GEOMETRY
 %************************************************************
-function S = topo_cache(ex, ey, good, rmax, gridres, extrapolate, border, method, cliprad)
+function S = topo_cache(ex, ey, good, scalp, rmax, gridres, extrapolate, border, method, cliprad)
 %TOPO_CACHE  Precompute everything about a scalp map that does not depend on the values
 %
 %   Inputs:
 %       ex          : Cx1 double - electrode screen x, all channels -- required
 %       ey          : Cx1 double - electrode screen y, all channels -- required
-%       good        : Cx1 logical - channels whose value is finite -- required
+%       good        : Cx1 logical - channels in the map: finite value, on the scalp -- required
+%       scalp       : Cx1 logical - channels that are not non-EEG by label -- required
 %       rmax        : double - head rim radius -- required
 %       gridres     : integer - side length of the output grid -- required
 %       extrapolate : char - 'head', 'local', or 'box' -- required
@@ -527,20 +577,17 @@ S = struct();
 S.ex        = double(ex(:));
 S.ey        = double(ey(:));
 S.good      = logical(good(:));
+S.scalp     = logical(scalp(:));
 S.num_chans = numel(S.ex);
 S.method    = method;
 S.extrap    = extrapolate;
 S.border    = border;
 
 % MNE: mask_scale = max(1, max||pos|| * 1.01 / radius)
-mask_scale    = max(1, max(hypot(S.ex, S.ey)) * 1.01 / rmax);
+mask_scale    = max(1, max(hypot(S.ex(S.scalp), S.ey(S.scalp))) * 1.01 / rmax);
 S.clip_radius = rmax * mask_scale;
 
 pos = [S.ex(S.good), S.ey(S.good)];
-
-assert(size(unique(pos, 'rows'), 1) == size(pos, 1), 'plot_topo:duplicatePositions', ...
-    ['Two or more channels with finite values share the same position. Exclude the ' ...
-     'non-scalp channels (EOG/EMG/ECG) before interpolating a scalp map.']);
 
 [extra, mask_xy] = boundary_points(pos, extrapolate, S.clip_radius, method);
 S.pos     = pos;
