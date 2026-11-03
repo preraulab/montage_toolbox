@@ -23,6 +23,8 @@ plot_topo(values, eloc, 'style', 'map');        % interpolated scalp map
 | `read_montage` | Read a `.sfp` / `.bvef` / `.elc` file into an `eloc` struct |
 | `default_montage` | Pick a sensible montage from a channel count |
 | `xyz_to_eloc` | Cartesian triple to a full `eloc` struct (polar + spherical fields) |
+| `electrode_distances` | Great-circle distance in cm between every pair of EEG electrodes; prints the nearest-neighbor spacing |
+| `scalp_channels` | Which channels are EEG, by label: the one rule `plot_topo` and `electrode_distances` share |
 | `build_montage_library` | Recompile `channel_locs/montage_library.mat` from raw vendor files (rarely run) |
 
 An `eloc` is an EEGLAB-style struct array. `plot_topo` needs either the polar pair
@@ -89,7 +91,7 @@ eloc = read_montage('/path/to/my_cap.bvef');   % .bvef / .sfp / .elc
 
 They are deliberately **not** dropped from `eloc` — they are recorded channels, so removing them would break the correspondence between `eloc(k)` and the data's channel *k*. `read_montage` warns (`read_montage:coincidentElectrodes`) so you know the cap has them.
 
-`plot_topo` recognizes them by name and leaves them out of everything: a channel labeled `EOG`, `EMG`, `ECG` or `EKG` (with or without a leading `H`, `V`, `L` or `R` and a trailing number) or `IO` is not interpolated, not drawn, and not used to size the axes. Pass the full channel vector and the full `eloc`:
+`plot_topo` recognizes them by name (the rule is `scalp_channels`, which `electrode_distances` also uses) and leaves them out of everything: a channel labeled `EOG`, `EMG`, `ECG` or `EKG` (with or without a leading `H`, `V`, `L` or `R` and a trailing number) or `IO` is not interpolated, not drawn, and not used to size the axes. Pass the full channel vector and the full `eloc`:
 
 ```matlab
 eloc = cap_montage('BC-SL-64');
@@ -239,6 +241,8 @@ copy. File history is preserved from `channelbrowse`.
 - `read_montage.m` — vendor electrode file reader (`.sfp` / `.bvef` / `.elc`)
 - `default_montage.m` — montage from a channel count
 - `xyz_to_eloc.m` — cartesian triple to full `eloc`
+- `electrode_distances.m` — pairwise scalp distances in cm for the EEG channels
+- `scalp_channels.m` — the non-EEG label rule
 - `build_montage_library.m` — recompile the library from raw vendor files
 - `channel_locs/montage_library.mat` — the compiled store (80 KB, 110 caps)
 - `channel_locs/vendor/` — where raw vendor files go; see its README

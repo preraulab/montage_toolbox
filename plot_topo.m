@@ -312,7 +312,7 @@ assert(~isempty(eloc), 'plot_topo:noEloc', ...
 
 [ex, ey, labels] = eloc_to_screen(eloc);
 num_chans = numel(ex);
-scalp = is_scalp(labels, cellstr(p.Results.nonscalp));   % the channels that take part
+scalp = scalp_channels(labels, cellstr(p.Results.nonscalp));   % the channels that take part (one rule, shared with electrode_distances)
 
 assert(isempty(values) || numel(values) == num_chans, ...
     'plot_topo:sizeMismatch', ...
@@ -512,29 +512,6 @@ for ii = 1:num_chans
     end
 end
 
-end
-
-%************************************************************
-%                    NON-EEG CHANNELS
-%************************************************************
-function scalp = is_scalp(labels, extra)
-%IS_SCALP  True for the channels whose label does not mark them as non-EEG
-%
-%   Inputs:
-%       labels : Cx1 cell - channel label strings -- required
-%       extra  : cellstr - further labels to treat as non-EEG -- required (may be empty)
-%
-%   Outputs:
-%       scalp : Cx1 logical - true where the channel takes part in the plot
-%
-%   The rule is by name because montages carry no channel type: EOG, EMG,
-%   ECG or EKG, with or without a leading H, V, L or R and a trailing
-%   number, and IO (infraorbital). The library's 110 montages use ECG,
-%   EMG1-3, EOG1-2, IO and VEOG, all of which this catches; a scalp label
-%   (Iz, O1, FC5, ...) never matches.
-
-non_eeg = '^(?:[HVLR]?(?:EOG|EMG|ECG|EKG)|IO)\d*$';
-scalp = cellfun(@isempty, regexpi(labels(:), non_eeg, 'once')) & ~ismember(lower(labels(:)), lower(extra));
 end
 
 %************************************************************
