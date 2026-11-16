@@ -158,7 +158,7 @@ function [hax, ex, ey, hmap, Zi, gx] = plot_topo(values, eloc, varargin)
 %       Please cite Gramfort et al. (2013) and Virtanen et al. (2020) alongside
 %       this toolbox. See README.md for the full reference list.
 %
-%   See also: cap_montage, read_montage, default_montage, xyz_to_eloc
+%   See also: cap_montage, read_montage, xyz_to_eloc
 %
 %   ∿∿∿  Prerau Laboratory MATLAB Codebase · sleepEEG.org  ∿∿∿
 

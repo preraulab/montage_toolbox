@@ -47,7 +47,7 @@ function varargout = cap_montage(name)
 %       scalp = eloc(~ismember({eloc.labels}, {'EOG1','EOG2','EMG1','EMG2','EMG3','ECG'}));
 %       plot_topo(vals(1:numel(scalp)), scalp, 'style', 'map');
 %
-%   See also: build_montage_library, read_montage, default_montage, plot_topo
+%   See also: build_montage_library, read_montage, plot_topo
 %
 %   ∿∿∿  Prerau Laboratory MATLAB Codebase · sleepEEG.org  ∿∿∿
 

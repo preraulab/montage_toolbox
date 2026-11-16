@@ -21,7 +21,6 @@ plot_topo(values, eloc, 'style', 'map');        % interpolated scalp map
 | `plot_topo` | Head model and interpolated scalp map; returns electrode screen coordinates |
 | `cap_montage` | Look up a cap montage by vendor product code; `cap_montage list` to enumerate |
 | `read_montage` | Read a `.sfp` / `.bvef` / `.elc` file into an `eloc` struct |
-| `default_montage` | Pick a sensible montage from a channel count |
 | `xyz_to_eloc` | Cartesian triple to a full `eloc` struct (polar + spherical fields) |
 | `electrode_distances` | Great-circle distance in cm between every pair of EEG electrodes; prints the nearest-neighbor spacing |
 | `scalp_channels` | Which channels are EEG, by label: the one rule `plot_topo` and `electrode_distances` share |
@@ -114,7 +113,16 @@ six  = eloc(ismember({eloc.labels}, {'F3','F4','C3','C4','O1','O2'}));
 
 The legacy `eloc6.mat`, `eloc64.mat`, `eloc64_2d.mat` and `eloc_10_20.mat` files have been **removed**. They were digitized off pictures, their channels were numbered rather than named, and their geometry did not describe a head — `eloc64` in particular was a radial starburst whose electrode radii varied 30-fold and whose best-fit sphere center sat 50% of a radius off the origin. Every channel count they covered is now served by a real vendor layout from the library.
 
-**The caveat that matters for old data:** those montages numbered their channels rather than naming them, so nothing recorded which physical electrode channel *k* was. The 64-channel default is now `AC-64`, which assumes the data's channel order matches actiCAP's (Fp1, Fp2, F7, F3, Fz, ...). For data that really came from a BrainVision 64 that is right; for anything else it silently mislabels channels. Verify the order against the recording header, and if the data is not a BrainVision 64, pass an explicit `eloc` from `read_montage` or `cap_montage`.
+**The caveat that matters for old data:** those montages numbered their channels rather than naming them, so nothing recorded which physical electrode channel *k* was. There is **no default montage by channel count** any more (`default_montage` has been removed): a count cannot tell caps apart, and a 64-channel default silently placed the lab's own NSS cap, whose electrode 1 is at the vertex, on actiCAP positions, whose channel 1 is Fp1. Every function that draws or measures electrodes takes an explicit `eloc`. Name the cap the data were recorded on:
+
+```matlab
+eloc = cap_montage('NSS-64');   % the lab's 64-channel cap, electrodes numbered 1..64 in recording order
+eloc = cap_montage('AC-64');    % a BrainVision actiCAP 64 (Fp1, Fp2, F7, F3, Fz, ...)
+eloc = fif_to_eloc('NSS05-2.fif', 'skipfirst', true);   % one subject's own digitization
+```
+
+Verify the order against the recording header: `eloc(k)` must be the electrode that recorded row *k* of the data.
+
 ## Scalp rendering — `plot_topo.m`
 
 `plot_topo` reads an `eloc` struct, projects the electrodes onto a 2-D head model, and optionally renders an interpolated scalp map.
@@ -239,7 +247,6 @@ copy. File history is preserved from `channelbrowse`.
 - `plot_topo.m` — head model and scalp-map plotter
 - `cap_montage.m` — montage lookup by product code
 - `read_montage.m` — vendor electrode file reader (`.sfp` / `.bvef` / `.elc`)
-- `default_montage.m` — montage from a channel count
 - `xyz_to_eloc.m` — cartesian triple to full `eloc`
 - `electrode_distances.m` — pairwise scalp distances in cm for the EEG channels
 - `scalp_channels.m` — the non-EEG label rule
